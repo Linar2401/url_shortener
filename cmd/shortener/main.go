@@ -83,7 +83,7 @@ func (s *URLStore) GetHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, val, http.StatusFound)
+	http.Redirect(w, r, val, http.StatusTemporaryRedirect)
 }
 
 func main() {
