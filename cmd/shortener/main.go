@@ -60,12 +60,11 @@ func (s *URLStore) CreateHandle(w http.ResponseWriter, r *http.Request) {
 	shortURL := s.SaveURL(string(body))
 
 	result := fmt.Sprintf("http://localhost:8080/%s", shortURL)
-
+	w.WriteHeader(http.StatusCreated)
 	_, err = w.Write([]byte(result))
 	if err != nil {
 		return
 	}
-	w.WriteHeader(http.StatusCreated)
 }
 
 func (s *URLStore) GetHandle(w http.ResponseWriter, r *http.Request) {
