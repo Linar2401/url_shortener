@@ -3,7 +3,7 @@ package main
 import (
 	"net/http"
 
-	Handlers "github.com/Linar2401/url_shortener/internal/handlers"
+	Handlers "github.com/Linar2401/url_shortener/internal/handler"
 	Storages "github.com/Linar2401/url_shortener/internal/storage"
 )
 
