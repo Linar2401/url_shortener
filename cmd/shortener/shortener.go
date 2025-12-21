@@ -1,22 +1,20 @@
 package main
 
 import (
-	"net/http"
-
 	Handlers "github.com/Linar2401/url_shortener/internal/handler"
 	Storages "github.com/Linar2401/url_shortener/internal/storage"
+	chi "github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
+	r := chi.NewRouter()
+
 	storage := Storages.New()
 	handlers := Handlers.New(storage)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc(`/`, handlers.CreateHandle)
-	mux.HandleFunc(`/{code}`, handlers.GetHandle)
+	r.Use(middleware.Logger)
 
-	err := http.ListenAndServe(`:8080`, mux)
-	if err != nil {
-		panic(err)
-	}
+	r.Post("/", handlers.CreateHandle)
+	r.Get("/{code}", handlers.GetHandle)
 }
