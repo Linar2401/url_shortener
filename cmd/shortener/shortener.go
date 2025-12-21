@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+
 	Handlers "github.com/Linar2401/url_shortener/internal/handler"
 	Storages "github.com/Linar2401/url_shortener/internal/storage"
 	chi "github.com/go-chi/chi/v5"
@@ -17,4 +19,9 @@ func main() {
 
 	r.Post("/", handlers.CreateHandle)
 	r.Get("/{code}", handlers.GetHandle)
+
+	err := http.ListenAndServe(":8080", r)
+	if err != nil {
+		return
+	}
 }
