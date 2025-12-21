@@ -63,12 +63,10 @@ func TestHandlers_CreateHandle(t *testing.T) {
 			h.CreateHandle(w, r)
 
 			result := w.Result()
-			defer func(Body io.ReadCloser) {
-				err := Body.Close()
-				if err != nil {
-
-				}
-			}(result.Body)
+			err := result.Body.Close()
+			if err != nil {
+				t.Errorf("Error while closing body:")
+			}
 
 			if result.StatusCode != tt.want.statusCode {
 				t.Errorf("Expected status code %d, got %d", tt.want.statusCode, result.StatusCode)
@@ -133,12 +131,10 @@ func TestHandlers_GetHandle(t *testing.T) {
 			mux.ServeHTTP(w, r)
 
 			result := w.Result()
-			defer func(Body io.ReadCloser) {
-				err := Body.Close()
-				if err != nil {
-
-				}
-			}(result.Body)
+			err := result.Body.Close()
+			if err != nil {
+				t.Errorf("Error while closing body:")
+			}
 
 			if result.StatusCode != tt.want.statusCode {
 				t.Errorf("Expected status code %d, got %d", tt.want.statusCode, result.StatusCode)
