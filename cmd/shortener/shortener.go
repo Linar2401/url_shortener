@@ -10,18 +10,23 @@ import (
 )
 
 func main() {
+	config := parseFlags()
+
+	if err := run(config); err != nil {
+		panic(err)
+	}
+}
+
+func run(config DefaultConfig) error {
 	r := chi.NewRouter()
 
 	storage := Storages.New()
-	handlers := Handlers.New(storage)
+	handlers := Handlers.New(storage, config.ServeAddress.String(), config.ResultAddress.String())
 
 	r.Use(middleware.Logger)
 
 	r.Post("/", handlers.CreateHandle)
 	r.Get("/{code}", handlers.GetHandle)
 
-	err := http.ListenAndServe(":8080", r)
-	if err != nil {
-		return
-	}
+	return http.ListenAndServe(config.ServeAddress.String(), r)
 }

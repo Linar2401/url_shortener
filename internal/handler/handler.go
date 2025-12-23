@@ -12,12 +12,16 @@ type URLStorer interface {
 }
 
 type Handlers struct {
-	storage URLStorer
+	storage    URLStorer
+	runAddr    string
+	resultAddr string
 }
 
-func New(storage URLStorer) *Handlers {
+func New(storage URLStorer, runAddr string, resultAddr string) *Handlers {
 	return &Handlers{
-		storage: storage,
+		storage:    storage,
+		runAddr:    runAddr,
+		resultAddr: resultAddr,
 	}
 }
 
@@ -34,7 +38,7 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 
 	shortURL := h.storage.SaveURL(string(body))
 
-	result := fmt.Sprintf("http://localhost:8080/%s", shortURL)
+	result := fmt.Sprintf("http://%s/%s", h.resultAddr, shortURL)
 	w.WriteHeader(http.StatusCreated)
 	_, err = w.Write([]byte(result))
 	if err != nil {
