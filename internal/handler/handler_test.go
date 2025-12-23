@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Linar2401/url_shortener/internal/config"
 )
 
 type MockStorage struct {
@@ -22,6 +24,8 @@ func (m *MockStorage) GetURL(code string) (string, bool) {
 }
 
 func TestHandlers_CreateHandle(t *testing.T) {
+	cfg := config.NewConfig()
+
 	type want struct {
 		statusCode int
 		response   string
@@ -38,7 +42,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 			body:   "https://example.com",
 			want: want{
 				statusCode: http.StatusCreated,
-				response:   "http://localhost:8080/short123",
+				response:   "http://" + cfg.ResultAddress.String() + "/short123",
 			},
 		},
 		{
@@ -55,7 +59,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := &MockStorage{data: make(map[string]string)}
-			h := New(storage, "localhost:8080", "localhost:8080")
+			h := New(storage, cfg.ServeAddress.String(), cfg.ResultAddress.String())
 
 			r := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			w := httptest.NewRecorder()
@@ -81,6 +85,8 @@ func TestHandlers_CreateHandle(t *testing.T) {
 }
 
 func TestHandlers_GetHandle(t *testing.T) {
+	cfg := config.NewConfig()
+
 	type want struct {
 		statusCode int
 		location   string
@@ -119,7 +125,7 @@ func TestHandlers_GetHandle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := &MockStorage{data: tt.storage}
-			h := New(storage, "localhost:8080", "localhost:8080")
+			h := New(storage, cfg.ServeAddress.String(), cfg.ResultAddress.String())
 
 			// Use ServeMux to handle PathValue extraction
 			mux := http.NewServeMux()
