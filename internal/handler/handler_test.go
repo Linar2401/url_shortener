@@ -127,7 +127,6 @@ func TestHandlers_GetHandle(t *testing.T) {
 			storage := &MockStorage{data: tt.storage}
 			h := New(storage, cfg.ServeAddress, cfg.ResultAddress)
 
-			// Use ServeMux to handle PathValue extraction
 			mux := http.NewServeMux()
 			mux.HandleFunc("/{code}", h.GetHandle)
 
