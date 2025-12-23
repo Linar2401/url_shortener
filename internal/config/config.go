@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"strings"
 )
 
 type Config struct {
@@ -23,6 +24,9 @@ func Load() *Config {
 	flag.StringVar(&cfg.ResultAddress, "b", "localhost:8080", "address and port to answer")
 
 	flag.Parse()
+
+	cfg.ServeAddress = strings.TrimRight(cfg.ServeAddress, "/")
+	cfg.ResultAddress = strings.TrimRight(cfg.ResultAddress, "/")
 
 	return cfg
 }
