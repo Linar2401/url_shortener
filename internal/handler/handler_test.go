@@ -42,7 +42,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 			body:   "https://example.com",
 			want: want{
 				statusCode: http.StatusCreated,
-				response:   "http://" + cfg.ResultAddress + "/short123",
+				response:   cfg.ResultAddress + "/short123",
 			},
 		},
 		{
