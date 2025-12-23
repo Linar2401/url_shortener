@@ -38,7 +38,7 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 
 	shortURL := h.storage.SaveURL(string(body))
 
-	result := fmt.Sprintf("http://%s/%s", h.resultAddr, shortURL)
+	result := fmt.Sprintf("%s/%s", h.resultAddr, shortURL)
 	w.WriteHeader(http.StatusCreated)
 	_, err = w.Write([]byte(result))
 	if err != nil {
