@@ -22,12 +22,12 @@ func run(cfg *config.Config) error {
 	r := chi.NewRouter()
 
 	storage := Storages.New()
-	handlers := Handlers.New(storage, cfg.ServeAddress.String(), cfg.ResultAddress.String())
+	handlers := Handlers.New(storage, cfg.ServeAddress, cfg.ResultAddress)
 
 	r.Use(middleware.Logger)
 
 	r.Post("/", handlers.CreateHandle)
 	r.Get("/{code}", handlers.GetHandle)
 
-	return http.ListenAndServe(cfg.ServeAddress.String(), r)
+	return http.ListenAndServe(cfg.ServeAddress, r)
 }
