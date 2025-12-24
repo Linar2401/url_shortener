@@ -22,7 +22,7 @@ func run(cfg *config.Config) error {
 	r := chi.NewRouter()
 
 	storage := Storages.New()
-	handlers := Handlers.New(storage, cfg.ServeAddress, cfg.ResultAddress)
+	handlers := Handlers.New(storage, *cfg)
 
 	r.Use(middleware.Logger)
 

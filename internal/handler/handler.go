@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	config "github.com/Linar2401/url_shortener/internal/config"
 )
 
 type URLStorer interface {
@@ -12,16 +14,14 @@ type URLStorer interface {
 }
 
 type Handlers struct {
-	storage    URLStorer
-	runAddr    string
-	resultAddr string
+	storage URLStorer
+	config  config.Config
 }
 
-func New(storage URLStorer, runAddr string, resultAddr string) *Handlers {
+func New(storage URLStorer, cfg config.Config) *Handlers {
 	return &Handlers{
-		storage:    storage,
-		runAddr:    runAddr,
-		resultAddr: resultAddr,
+		storage: storage,
+		config:  cfg,
 	}
 }
 
@@ -38,7 +38,7 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 
 	shortURL := h.storage.SaveURL(string(body))
 
-	result := fmt.Sprintf("%s/%s", h.resultAddr, shortURL)
+	result := fmt.Sprintf("%s/%s", h.config.ResultAddress, shortURL)
 	w.WriteHeader(http.StatusCreated)
 	_, err = w.Write([]byte(result))
 	if err != nil {

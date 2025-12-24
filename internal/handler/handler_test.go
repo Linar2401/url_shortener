@@ -59,7 +59,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := &MockStorage{data: make(map[string]string)}
-			h := New(storage, cfg.ServeAddress, cfg.ResultAddress)
+			h := New(storage, *cfg)
 
 			r := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			w := httptest.NewRecorder()
@@ -125,7 +125,7 @@ func TestHandlers_GetHandle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := &MockStorage{data: tt.storage}
-			h := New(storage, cfg.ServeAddress, cfg.ResultAddress)
+			h := New(storage, *cfg)
 
 			mux := http.NewServeMux()
 			mux.HandleFunc("/{code}", h.GetHandle)
