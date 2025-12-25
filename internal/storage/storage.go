@@ -1,17 +1,19 @@
 package storage
 
 import (
+	"errors"
 	"math/rand/v2"
 	"sync"
 )
 
 const (
-	charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	codeLen = 6
+	charset  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	codeLen  = 6
+	maxTries = 100
 )
 
 type URLStore struct {
-	mu    sync.RWMutex
+	mu    sync.Mutex
 	codes map[string]string
 }
 
@@ -25,24 +27,28 @@ func (s *URLStore) SaveURL(value string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for {
+	for n := 0; n < maxTries; n++ {
 		b := make([]byte, codeLen)
 		for i := range b {
 			b[i] = charset[rand.IntN(len(charset))]
 		}
 		code := string(b)
 
-		if _, exists := s.codes[code]; !exists {
+		if _, ok := s.codes[code]; !ok {
 			s.codes[code] = value
 			return code
 		}
 	}
+	return ""
 }
 
-func (s *URLStore) GetURL(code string) (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (s *URLStore) GetURL(code string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	val, ok := s.codes[code]
-	return val, ok
+	if !ok {
+		return "", errors.New("url not found")
+	}
+	return val, nil
 }

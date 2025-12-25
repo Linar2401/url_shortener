@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,9 +19,12 @@ func (m *MockStorage) SaveURL(_ string) string {
 	return "short123"
 }
 
-func (m *MockStorage) GetURL(code string) (string, bool) {
+func (m *MockStorage) GetURL(code string) (string, error) {
 	url, ok := m.data[code]
-	return url, ok
+	if !ok {
+		return "", fmt.Errorf("mock: code %q not found", code)
+	}
+	return url, nil
 }
 
 func TestHandlers_CreateHandle(t *testing.T) {

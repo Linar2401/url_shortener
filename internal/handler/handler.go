@@ -5,17 +5,34 @@ import (
 	"io"
 	"net/http"
 
-	config "github.com/Linar2401/url_shortener/internal/config"
+	"github.com/Linar2401/url_shortener/internal/config"
+	Storages "github.com/Linar2401/url_shortener/internal/storage"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type URLStorer interface {
 	SaveURL(value string) string
-	GetURL(code string) (string, bool)
+	GetURL(code string) (string, error)
 }
 
 type Handlers struct {
 	storage URLStorer
 	config  config.Config
+}
+
+func Serve(cfg *config.Config) error {
+	r := chi.NewRouter()
+
+	storage := Storages.New()
+	handlers := New(storage, *cfg)
+
+	r.Use(middleware.Logger)
+
+	r.Post("/", handlers.CreateHandle)
+	r.Get("/{code}", handlers.GetHandle)
+
+	return http.ListenAndServe(cfg.ServeAddress, r)
 }
 
 func New(storage URLStorer, cfg config.Config) *Handlers {
@@ -54,9 +71,9 @@ func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
 	}
 	code := r.PathValue("code")
 
-	val, ok := h.storage.GetURL(code)
+	val, err := h.storage.GetURL(code)
 
-	if !ok {
+	if err != nil {
 		http.Error(w, "Code not found", http.StatusBadRequest)
 		return
 	}
