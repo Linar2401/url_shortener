@@ -3,10 +3,12 @@ package handler
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 
 	"github.com/Linar2401/url_shortener/internal/config"
-	Storages "github.com/Linar2401/url_shortener/internal/storage"
+	"github.com/Linar2401/url_shortener/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -24,8 +26,8 @@ type Handlers struct {
 func Serve(cfg *config.Config) error {
 	r := chi.NewRouter()
 
-	storage := Storages.New()
-	handlers := New(storage, *cfg)
+	urlStore := storage.New()
+	handlers := New(urlStore, *cfg)
 
 	r.Use(middleware.Logger)
 
@@ -43,38 +45,33 @@ func New(storage URLStorer, cfg config.Config) *Handlers {
 }
 
 func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST", http.StatusBadRequest)
-		return
-	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		log.Fatalln(http.StatusText(http.StatusInternalServerError))
 		return
 	}
 
 	shortURL := h.storage.SaveURL(string(body))
 
-	result := fmt.Sprintf("%s/%s", h.config.ResultAddress, shortURL)
+	resultUrl, _ := url.JoinPath(h.config.ResultAddress, shortURL)
 	w.WriteHeader(http.StatusCreated)
-	_, err = w.Write([]byte(result))
+	_, err = w.Write([]byte(resultUrl))
 	if err != nil {
-		http.Error(w, "Failed to write response", http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		log.Fatalln(http.StatusText(http.StatusInternalServerError))
 		return
 	}
 }
 
 func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Only GET", http.StatusBadRequest)
-		return
-	}
 	code := r.PathValue("code")
 
 	val, err := h.storage.GetURL(code)
 
 	if err != nil {
-		http.Error(w, "Code not found", http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		log.Println(fmt.Sprintf("Code not found: %s", code))
 		return
 	}
 

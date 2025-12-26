@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,23 +9,9 @@ import (
 	"testing"
 
 	"github.com/Linar2401/url_shortener/internal/config"
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/mock"
 )
-
-type MockStorage struct {
-	data map[string]string
-}
-
-func (m *MockStorage) SaveURL(_ string) string {
-	return "short123"
-}
-
-func (m *MockStorage) GetURL(code string) (string, error) {
-	url, ok := m.data[code]
-	if !ok {
-		return "", fmt.Errorf("mock: code %q not found", code)
-	}
-	return url, nil
-}
 
 func TestHandlers_CreateHandle(t *testing.T) {
 	cfg := config.NewConfig()
@@ -54,21 +40,29 @@ func TestHandlers_CreateHandle(t *testing.T) {
 			method: http.MethodGet,
 			body:   "https://example.com",
 			want: want{
-				statusCode: http.StatusBadRequest,
-				response:   "Only POST\n",
+				statusCode: http.StatusMethodNotAllowed,
+				response:   "",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			storage := &MockStorage{data: make(map[string]string)}
+			storage := NewMockURLStorer(t)
+
+			if tt.method == http.MethodPost {
+				storage.On("SaveURL", mock.Anything).Return("short123")
+			}
+
 			h := New(storage, *cfg)
 
-			r := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
+			r := chi.NewRouter()
+			r.Post("/", h.CreateHandle)
+
+			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			w := httptest.NewRecorder()
 
-			h.CreateHandle(w, r)
+			r.ServeHTTP(w, req)
 
 			result := w.Result()
 			err := result.Body.Close()
@@ -80,9 +74,11 @@ func TestHandlers_CreateHandle(t *testing.T) {
 				t.Errorf("Expected status code %d, got %d", tt.want.statusCode, result.StatusCode)
 			}
 
-			body, _ := io.ReadAll(result.Body)
-			if string(body) != tt.want.response {
-				t.Errorf("Expected body %q, got %q", tt.want.response, string(body))
+			if tt.want.response != "" {
+				body, _ := io.ReadAll(result.Body)
+				if string(body) != tt.want.response {
+					t.Errorf("Expected body %q, got %q", tt.want.response, string(body))
+				}
 			}
 		})
 	}
@@ -96,18 +92,18 @@ func TestHandlers_GetHandle(t *testing.T) {
 		location   string
 	}
 	tests := []struct {
-		name    string
-		method  string
-		path    string
-		storage map[string]string
-		want    want
+		name         string
+		method       string
+		path         string
+		mockBehavior func(s *MockURLStorer)
+		want         want
 	}{
 		{
 			name:   "success",
 			method: http.MethodGet,
 			path:   "/short123",
-			storage: map[string]string{
-				"short123": "https://example.com",
+			mockBehavior: func(s *MockURLStorer) {
+				s.On("GetURL", "short123").Return("https://example.com", nil)
 			},
 			want: want{
 				statusCode: http.StatusTemporaryRedirect,
@@ -115,12 +111,25 @@ func TestHandlers_GetHandle(t *testing.T) {
 			},
 		},
 		{
-			name:    "not found",
-			method:  http.MethodGet,
-			path:    "/unknown",
-			storage: map[string]string{},
+			name:   "not found",
+			method: http.MethodGet,
+			path:   "/unknown",
+			mockBehavior: func(s *MockURLStorer) {
+				s.On("GetURL", "unknown").Return("", errors.New("not found"))
+			},
 			want: want{
-				statusCode: http.StatusBadRequest,
+				statusCode: http.StatusNotFound,
+				location:   "",
+			},
+		},
+		{
+			name:   "wrong method",
+			method: http.MethodPost,
+			path:   "/unknown",
+			mockBehavior: func(s *MockURLStorer) {
+			},
+			want: want{
+				statusCode: http.StatusMethodNotAllowed,
 				location:   "",
 			},
 		},
@@ -128,16 +137,20 @@ func TestHandlers_GetHandle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			storage := &MockStorage{data: tt.storage}
+			storage := NewMockURLStorer(t)
+			if tt.mockBehavior != nil {
+				tt.mockBehavior(storage)
+			}
+
 			h := New(storage, *cfg)
 
-			mux := http.NewServeMux()
-			mux.HandleFunc("/{code}", h.GetHandle)
+			r := chi.NewRouter()
+			r.Get("/{code}", h.GetHandle)
 
-			r := httptest.NewRequest(tt.method, tt.path, nil)
+			req := httptest.NewRequest(tt.method, tt.path, nil)
 			w := httptest.NewRecorder()
 
-			mux.ServeHTTP(w, r)
+			r.ServeHTTP(w, req)
 
 			result := w.Result()
 			err := result.Body.Close()
