@@ -53,9 +53,9 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 
 	shortURL := h.storage.SaveURL(string(body))
 
-	resultUrl, _ := url.JoinPath(h.config.ResultAddress, shortURL)
+	resultURL, _ := url.JoinPath(h.config.ResultAddress, shortURL)
 	w.WriteHeader(http.StatusCreated)
-	_, err = w.Write([]byte(resultUrl))
+	_, err = w.Write([]byte(resultURL))
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		log.Fatalln(http.StatusText(http.StatusInternalServerError))
