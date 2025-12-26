@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -71,7 +70,7 @@ func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		log.Println(fmt.Sprintf("Code not found: %s", code))
+		log.Println("Code not found")
 		return
 	}
 
