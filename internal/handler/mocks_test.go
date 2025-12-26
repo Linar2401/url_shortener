@@ -96,18 +96,18 @@ func (_c *MockURLStorer_GetURL_Call) RunAndReturn(run func(code string) (string,
 }
 
 // SaveURL provides a mock function for the type MockURLStorer
-func (_mock *MockURLStorer) SaveURL(value string) string {
-	ret := _mock.Called(value)
+func (_mock *MockURLStorer) SaveURL(code string, value string) error {
+	ret := _mock.Called(code, value)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveURL")
 	}
 
-	var r0 string
-	if returnFunc, ok := ret.Get(0).(func(string) string); ok {
-		r0 = returnFunc(value)
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = returnFunc(code, value)
 	} else {
-		r0 = ret.Get(0).(string)
+		r0 = ret.Error(0)
 	}
 	return r0
 }
@@ -118,30 +118,36 @@ type MockURLStorer_SaveURL_Call struct {
 }
 
 // SaveURL is a helper method to define mock.On call
+//   - code string
 //   - value string
-func (_e *MockURLStorer_Expecter) SaveURL(value interface{}) *MockURLStorer_SaveURL_Call {
-	return &MockURLStorer_SaveURL_Call{Call: _e.mock.On("SaveURL", value)}
+func (_e *MockURLStorer_Expecter) SaveURL(code interface{}, value interface{}) *MockURLStorer_SaveURL_Call {
+	return &MockURLStorer_SaveURL_Call{Call: _e.mock.On("SaveURL", code, value)}
 }
 
-func (_c *MockURLStorer_SaveURL_Call) Run(run func(value string)) *MockURLStorer_SaveURL_Call {
+func (_c *MockURLStorer_SaveURL_Call) Run(run func(code string, value string)) *MockURLStorer_SaveURL_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
 			arg0 = args[0].(string)
 		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
 }
 
-func (_c *MockURLStorer_SaveURL_Call) Return(s string) *MockURLStorer_SaveURL_Call {
-	_c.Call.Return(s)
+func (_c *MockURLStorer_SaveURL_Call) Return(_a0 error) *MockURLStorer_SaveURL_Call {
+	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockURLStorer_SaveURL_Call) RunAndReturn(run func(value string) string) *MockURLStorer_SaveURL_Call {
+func (_c *MockURLStorer_SaveURL_Call) RunAndReturn(run func(code string, value string) error) *MockURLStorer_SaveURL_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 
@@ -12,8 +14,14 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+const (
+	charset  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	codeLen  = 6
+	maxTries = 100
+)
+
 type URLStorer interface {
-	SaveURL(value string) string
+	SaveURL(code string, value string) error
 	GetURL(code string) (string, error)
 }
 
@@ -47,18 +55,49 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Fatalln(http.StatusText(http.StatusInternalServerError))
+		log.Fatalln("error with read body")
 		return
 	}
 
-	shortURL := h.storage.SaveURL(string(body))
+	var shortURL string
+	shortURL = ""
+	for n := 0; n < maxTries; n++ {
+		b := make([]byte, codeLen)
+		for i := range b {
+			b[i] = charset[rand.IntN(len(charset))]
+		}
+		code := string(b)
 
-	resultURL, _ := url.JoinPath(h.config.ResultAddress, shortURL)
+		err = h.storage.SaveURL(code, string(body))
+		if err == nil {
+			shortURL = code
+			break
+		}
+		if !errors.Is(err, storage.ErrCollision) {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			log.Fatalln("error with save url")
+			return
+		}
+	}
+
+	if shortURL == "" {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		log.Fatalln("error with save url: max tries reached")
+		return
+	}
+
+	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		log.Fatalln("error with join path")
+		return
+	}
+
 	w.WriteHeader(http.StatusCreated)
 	_, err = w.Write([]byte(resultURL))
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Fatalln(http.StatusText(http.StatusInternalServerError))
+		log.Fatalln("error with write response body")
 		return
 	}
 }
@@ -70,7 +109,6 @@ func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		log.Println("Code not found")
 		return
 	}
 

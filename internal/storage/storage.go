@@ -2,15 +2,10 @@ package storage
 
 import (
 	"errors"
-	"math/rand/v2"
 	"sync"
 )
 
-const (
-	charset  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	codeLen  = 6
-	maxTries = 100
-)
+var ErrCollision = errors.New("collision")
 
 type URLStore struct {
 	mu    sync.Mutex
@@ -23,23 +18,16 @@ func New() *URLStore {
 	}
 }
 
-func (s *URLStore) SaveURL(value string) string {
+func (s *URLStore) SaveURL(code string, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for n := 0; n < maxTries; n++ {
-		b := make([]byte, codeLen)
-		for i := range b {
-			b[i] = charset[rand.IntN(len(charset))]
-		}
-		code := string(b)
-
-		if _, ok := s.codes[code]; !ok {
-			s.codes[code] = value
-			return code
-		}
+	if _, ok := s.codes[code]; ok {
+		return ErrCollision
 	}
-	return ""
+
+	s.codes[code] = value
+	return nil
 }
 
 func (s *URLStore) GetURL(code string) (string, error) {

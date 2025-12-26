@@ -32,7 +32,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 			body:   "https://example.com",
 			want: want{
 				statusCode: http.StatusCreated,
-				response:   cfg.ResultAddress + "/short123",
+				response:   cfg.ResultAddress + "/",
 			},
 		},
 		{
@@ -51,7 +51,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 			storage := NewMockURLStorer(t)
 
 			if tt.method == http.MethodPost {
-				storage.On("SaveURL", mock.Anything).Return("short123")
+				storage.On("SaveURL", mock.Anything, mock.Anything).Return(nil)
 			}
 
 			h := New(storage, *cfg)
@@ -76,8 +76,9 @@ func TestHandlers_CreateHandle(t *testing.T) {
 
 			if tt.want.response != "" {
 				body, _ := io.ReadAll(result.Body)
-				if string(body) != tt.want.response {
-					t.Errorf("Expected body %q, got %q", tt.want.response, string(body))
+				// Since the code is generated randomly, we can only check the prefix
+				if !strings.HasPrefix(string(body), tt.want.response) {
+					t.Errorf("Expected body to start with %q, got %q", tt.want.response, string(body))
 				}
 			}
 		})
