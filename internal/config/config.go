@@ -3,7 +3,6 @@ package config
 import (
 	"flag"
 	"github.com/caarlos0/env/v6"
-	"log"
 	"strings"
 )
 
@@ -19,25 +18,17 @@ func NewDefaultConfig() *Config {
 	}
 }
 
-func Load() *Config {
-	var cfg Config
-	err := env.Parse(&cfg)
-	if err != nil {
-		log.Fatal(err)
+func Load() (*Config, error) {
+	var cfg = NewDefaultConfig()
+	if err := env.Parse(cfg); err != nil {
+		return nil, err
 	}
 
 	flag.StringVar(&cfg.ServeAddress, "a", "localhost:8080", "address and port to run server")
 	flag.StringVar(&cfg.ResultAddress, "b", "http://localhost:8080", "address and port to answer")
-
 	flag.Parse()
 
-	if cfg.ServeAddress == "" {
-		cfg.ServeAddress = strings.TrimRight(cfg.ServeAddress, "/")
-	}
-
-	if cfg.ResultAddress == "" {
-		cfg.ResultAddress = strings.TrimRight(cfg.ResultAddress, "/")
-	}
-
-	return &cfg
+	cfg.ServeAddress = strings.TrimSuffix(cfg.ServeAddress, "/")
+	cfg.ResultAddress = strings.TrimSuffix(cfg.ResultAddress, "/")
+	return cfg, nil
 }
