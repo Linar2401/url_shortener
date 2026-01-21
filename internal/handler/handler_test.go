@@ -14,7 +14,7 @@ import (
 )
 
 func TestHandlers_CreateHandle(t *testing.T) {
-	cfg := config.NewConfig()
+	cfg := config.NewDefaultConfig()
 
 	type want struct {
 		statusCode int
@@ -86,7 +86,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 }
 
 func TestHandlers_GetHandle(t *testing.T) {
-	cfg := config.NewConfig()
+	cfg := config.NewDefaultConfig()
 
 	type want struct {
 		statusCode int
