@@ -9,9 +9,10 @@ import (
 	"net/url"
 
 	"github.com/Linar2401/url_shortener/internal/config"
+	"github.com/Linar2401/url_shortener/internal/logger"
 	"github.com/Linar2401/url_shortener/internal/storage"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"go.uber.org/zap"
 )
 
 const (
@@ -36,10 +37,17 @@ func Serve(cfg *config.Config) error {
 	urlStore := storage.New()
 	handlers := New(urlStore, *cfg)
 
-	r.Use(middleware.Logger)
+	if err := logger.Initialize(cfg.LogLevel); err != nil {
+		return err
+	}
 
-	r.Post("/", handlers.CreateHandle)
-	r.Get("/{code}", handlers.GetHandle)
+	logger.Log.Info("Running server", zap.String("address", cfg.ServeAddress))
+	// оборачиваем хендлер webhook в middleware с логированием
+
+	//r.Use(middleware.Logger)
+
+	r.Method(http.MethodPost, "/", logger.RequestLogger(handlers.CreateHandle))
+	r.Method(http.MethodGet, "/{code}", logger.RequestLogger(handlers.GetHandle))
 
 	return http.ListenAndServe(cfg.ServeAddress, r)
 }
