@@ -34,6 +34,6 @@ func Load() (*Config, error) {
 
 	cfg.ServeAddress = strings.TrimSuffix(cfg.ServeAddress, "/")
 	cfg.ResultAddress = strings.TrimSuffix(cfg.ResultAddress, "/")
-	cfg.LogLevel = cfg.LogLevel
+
 	return cfg, nil
 }
