@@ -55,7 +55,7 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Fatalln("error with read body")
+		log.Println("error with read body")
 		return
 	}
 
@@ -75,21 +75,21 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 		}
 		if !errors.Is(err, storage.ErrCollision) {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			log.Fatalln("error with save url")
+			log.Println("error with save url")
 			return
 		}
 	}
 
 	if shortURL == "" {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Fatalln("error with save url: max tries reached")
+		log.Println("error with save url: max tries reached")
 		return
 	}
 
 	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Fatalln("error with join path")
+		log.Println("error with join path")
 		return
 	}
 
@@ -97,7 +97,7 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write([]byte(resultURL))
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Fatalln("error with write response body")
+		log.Println("error with write response body")
 		return
 	}
 }

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -23,7 +24,7 @@ func (s *URLStore) SaveURL(code string, value string) error {
 	defer s.mu.Unlock()
 
 	if _, ok := s.codes[code]; ok {
-		return ErrCollision
+		return fmt.Errorf("%w: %s", ErrCollision, code)
 	}
 
 	s.codes[code] = value
