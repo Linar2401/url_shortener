@@ -59,7 +59,6 @@ func (c *compressWriter) Close() error {
 
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Обработка запроса (decompress)
 		contentEncoding := r.Header.Get("Content-Encoding")
 		sendsGzip := strings.Contains(contentEncoding, "gzip")
 		if sendsGzip {
@@ -78,7 +77,6 @@ func GzipMiddleware(next http.Handler) http.Handler {
 			}(cr)
 		}
 
-		// 2. Обработка ответа (compress)
 		acceptEncoding := r.Header.Get("Accept-Encoding")
 		supportsGzip := strings.Contains(acceptEncoding, "gzip")
 

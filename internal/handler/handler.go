@@ -44,7 +44,10 @@ type ShortenResponse struct {
 func Serve(cfg *config.Config) error {
 	r := chi.NewRouter()
 
-	urlStore := storage.New()
+	urlStore, err := storage.New(cfg.FileStoragePath)
+	if err != nil {
+		return err
+	}
 	handlers := New(urlStore, *cfg)
 
 	if err := logger.Initialize(cfg.LogLevel); err != nil {
