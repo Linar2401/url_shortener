@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -167,6 +168,99 @@ func TestHandlers_GetHandle(t *testing.T) {
 				loc := result.Header.Get("Location")
 				if loc != tt.want.location {
 					t.Errorf("Expected location %q, got %q", tt.want.location, loc)
+				}
+			}
+		})
+	}
+}
+
+func TestHandlers_ShortenJSONHandle(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+
+	type want struct {
+		statusCode int
+		response   string
+	}
+	tests := []struct {
+		name         string
+		method       string
+		body         string
+		mockBehavior func(s *MockURLStorer)
+		want         want
+	}{
+		{
+			name:   "success",
+			method: http.MethodPost,
+			body:   `{"url": "https://example.com"}`,
+			mockBehavior: func(s *MockURLStorer) {
+				s.On("SaveURL", mock.Anything, "https://example.com").Return(nil)
+			},
+			want: want{
+				statusCode: http.StatusCreated,
+				response:   `{"result":"` + cfg.ResultAddress + "/",
+			},
+		},
+		{
+			name:   "invalid json",
+			method: http.MethodPost,
+			body:   `{"url": "https://example.com"`,
+			mockBehavior: func(s *MockURLStorer) {
+			},
+			want: want{
+				statusCode: http.StatusBadRequest,
+				response:   "",
+			},
+		},
+		{
+			name:   "empty url",
+			method: http.MethodPost,
+			body:   `{"url": ""}`,
+			mockBehavior: func(s *MockURLStorer) {
+			},
+			want: want{
+				statusCode: http.StatusBadRequest,
+				response:   "",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			storage := NewMockURLStorer(t)
+			if tt.mockBehavior != nil {
+				tt.mockBehavior(storage)
+			}
+
+			h := New(storage, *cfg)
+
+			r := chi.NewRouter()
+			r.Post("/api/shorten", h.ShortenJSONHandle)
+
+			req := httptest.NewRequest(tt.method, "/api/shorten", strings.NewReader(tt.body))
+			w := httptest.NewRecorder()
+
+			r.ServeHTTP(w, req)
+
+			result := w.Result()
+			err := result.Body.Close()
+			if err != nil {
+				t.Errorf("Error while closing body:")
+			}
+
+			if result.StatusCode != tt.want.statusCode {
+				t.Errorf("Expected status code %d, got %d", tt.want.statusCode, result.StatusCode)
+			}
+
+			if tt.want.response != "" {
+				body, _ := io.ReadAll(result.Body)
+				if !strings.HasPrefix(string(body), tt.want.response) {
+					t.Errorf("Expected body to start with %q, got %q", tt.want.response, string(body))
+				}
+
+				// Check if response is valid JSON
+				var resp ShortenResponse
+				if err := json.Unmarshal(body, &resp); err != nil {
+					t.Errorf("Response is not valid JSON: %v", err)
 				}
 			}
 		})

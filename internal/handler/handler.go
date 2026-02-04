@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -31,6 +32,14 @@ type Handlers struct {
 	config  config.Config
 }
 
+type ShortenRequest struct {
+	URL string `json:"url"`
+}
+
+type ShortenResponse struct {
+	Result string `json:"result"`
+}
+
 func Serve(cfg *config.Config) error {
 	r := chi.NewRouter()
 
@@ -48,6 +57,7 @@ func Serve(cfg *config.Config) error {
 
 	r.Method(http.MethodPost, "/", logger.RequestLogger(handlers.CreateHandle))
 	r.Method(http.MethodGet, "/{code}", logger.RequestLogger(handlers.GetHandle))
+	r.Method(http.MethodPost, "/api/shorten", logger.RequestLogger(handlers.ShortenJSONHandle))
 
 	return http.ListenAndServe(cfg.ServeAddress, r)
 }
@@ -56,6 +66,64 @@ func New(storage URLStorer, cfg config.Config) *Handlers {
 	return &Handlers{
 		storage: storage,
 		config:  cfg,
+	}
+}
+
+func (h *Handlers) ShortenJSONHandle(w http.ResponseWriter, r *http.Request) {
+	var req ShortenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	if req.URL == "" {
+		http.Error(w, "url is required", http.StatusBadRequest)
+		return
+	}
+
+	originalURL := req.URL
+
+	var shortURL string
+	for n := 0; n < maxTries; n++ {
+		b := make([]byte, codeLen)
+		for i := range b {
+			b[i] = charset[rand.IntN(len(charset))]
+		}
+		code := string(b)
+
+		err := h.storage.SaveURL(code, originalURL)
+		if err == nil {
+			shortURL = code
+			break
+		}
+		if !errors.Is(err, storage.ErrCollision) {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			log.Println("error with save url")
+			return
+		}
+	}
+
+	if shortURL == "" {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		log.Println("error with save url: max tries reached")
+		return
+	}
+
+	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		log.Println("error with join path")
+		return
+	}
+
+	res := ShortenResponse{Result: resultURL}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		log.Println("error with write response body")
+		return
 	}
 }
 
