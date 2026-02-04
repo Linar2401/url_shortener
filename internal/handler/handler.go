@@ -11,6 +11,7 @@ import (
 
 	"github.com/Linar2401/url_shortener/internal/config"
 	"github.com/Linar2401/url_shortener/internal/logger"
+	"github.com/Linar2401/url_shortener/internal/middleware"
 	"github.com/Linar2401/url_shortener/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -51,6 +52,9 @@ func Serve(cfg *config.Config) error {
 	}
 
 	logger.Log.Info("Running server", zap.String("address", cfg.ServeAddress))
+
+	r.Use(middleware.GzipMiddleware)
+
 	// оборачиваем хендлер webhook в middleware с логированием
 
 	//r.Use(middleware.Logger)
