@@ -27,7 +27,7 @@ const (
 
 // Event is the payload pushed to every Observer.
 type Event struct {
-	Ts     int64  `json:"ts"`
+	TS     int64  `json:"ts"`
 	Action Action `json:"action"`
 	UserID string `json:"user_id,omitempty"`
 	URL    string `json:"url"`
@@ -64,14 +64,14 @@ func (p *Publisher) Subscribe(o Observer) {
 }
 
 // Publish broadcasts e to every registered observer. If no observers are
-// configured the call is a no-op. Ts is filled in here if the caller left
+// configured the call is a no-op. TS is filled in here if the caller left
 // it zero so handlers don't all have to remember to set it.
 func (p *Publisher) Publish(e Event) {
 	if p == nil {
 		return
 	}
-	if e.Ts == 0 {
-		e.Ts = time.Now().Unix()
+	if e.TS == 0 {
+		e.TS = time.Now().Unix()
 	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
