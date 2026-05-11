@@ -5,6 +5,7 @@
 package handler
 
 import (
+	"github.com/Linar2401/url_shortener/internal/storage"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -149,5 +150,38 @@ func (_c *MockURLStorer_SaveURL_Call) Return(_a0 error) *MockURLStorer_SaveURL_C
 
 func (_c *MockURLStorer_SaveURL_Call) RunAndReturn(run func(code string, value string) error) *MockURLStorer_SaveURL_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SaveBatch provides a mock function for the type MockURLStorer
+func (_mock *MockURLStorer) SaveBatch(items []storage.BatchItem) error {
+	ret := _mock.Called(items)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveBatch")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func([]storage.BatchItem) error); ok {
+		r0 = returnFunc(items)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockURLStorer_SaveBatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveBatch'
+type MockURLStorer_SaveBatch_Call struct {
+	*mock.Call
+}
+
+// SaveBatch is a helper method to define mock.On call
+//   - items []storage.BatchItem
+func (_e *MockURLStorer_Expecter) SaveBatch(items interface{}) *MockURLStorer_SaveBatch_Call {
+	return &MockURLStorer_SaveBatch_Call{Call: _e.mock.On("SaveBatch", items)}
+}
+
+func (_c *MockURLStorer_SaveBatch_Call) Return(_a0 error) *MockURLStorer_SaveBatch_Call {
+	_c.Call.Return(_a0)
 	return _c
 }

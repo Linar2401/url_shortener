@@ -12,15 +12,30 @@ import (
 
 var ErrCollision = errors.New("collision")
 
+// ConflictError signals that the original URL is already stored under ShortCode.
+type ConflictError struct {
+	ShortCode string
+}
+
+func (e *ConflictError) Error() string {
+	return fmt.Sprintf("original url already shortened as %s", e.ShortCode)
+}
+
 type FileRecord struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
+type BatchItem struct {
+	ShortCode   string
+	OriginalURL string
+}
+
 type URLStore struct {
 	mu              sync.Mutex
 	codes           map[string]FileRecord
+	originals       map[string]string
 	fileStoragePath string
 	uuidCounter     int
 }
@@ -28,6 +43,7 @@ type URLStore struct {
 func New(fileStoragePath string) (*URLStore, error) {
 	store := &URLStore{
 		codes:           make(map[string]FileRecord),
+		originals:       make(map[string]string),
 		fileStoragePath: fileStoragePath,
 		uuidCounter:     0,
 	}
@@ -73,6 +89,7 @@ func (s *URLStore) loadFromFile() error {
 
 	for _, record := range records {
 		s.codes[record.ShortURL] = record
+		s.originals[record.OriginalURL] = record.ShortURL
 		uuid, err := strconv.Atoi(record.UUID)
 		if err == nil && uuid > s.uuidCounter {
 			s.uuidCounter = uuid
@@ -108,6 +125,10 @@ func (s *URLStore) SaveURL(code string, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if existing, ok := s.originals[value]; ok {
+		return &ConflictError{ShortCode: existing}
+	}
+
 	if _, ok := s.codes[code]; ok {
 		return fmt.Errorf("%w: %s", ErrCollision, code)
 	}
@@ -120,6 +141,7 @@ func (s *URLStore) SaveURL(code string, value string) error {
 	}
 
 	s.codes[code] = record
+	s.originals[value] = code
 
 	if s.fileStoragePath != "" {
 		if err := s.persist(); err != nil {
@@ -127,6 +149,43 @@ func (s *URLStore) SaveURL(code string, value string) error {
 		}
 	}
 
+	return nil
+}
+
+func (s *URLStore) SaveBatch(items []BatchItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, item := range items {
+		if existing, ok := s.originals[item.OriginalURL]; ok {
+			items[i].ShortCode = existing
+			continue
+		}
+		if _, ok := s.codes[item.ShortCode]; ok {
+			return fmt.Errorf("%w: %s", ErrCollision, item.ShortCode)
+		}
+	}
+
+	for _, item := range items {
+		if _, ok := s.codes[item.ShortCode]; ok {
+			continue
+		}
+		s.uuidCounter++
+		s.codes[item.ShortCode] = FileRecord{
+			UUID:        strconv.Itoa(s.uuidCounter),
+			ShortURL:    item.ShortCode,
+			OriginalURL: item.OriginalURL,
+		}
+		s.originals[item.OriginalURL] = item.ShortCode
+	}
+
+	if s.fileStoragePath != "" {
+		return s.persist()
+	}
 	return nil
 }
 
