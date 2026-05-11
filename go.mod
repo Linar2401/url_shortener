@@ -1,11 +1,11 @@
 module github.com/Linar2401/url_shortener
 
-go 1.25.0
+go 1.24.11
 
 require (
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/go-chi/chi/v5 v5.2.3
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.8.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.1
 )
