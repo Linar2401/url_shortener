@@ -8,7 +8,6 @@ import (
 	"io"
 	"math/rand/v2"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -236,12 +235,7 @@ func (h *Handlers) ShortenJSONHandle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
-	if err != nil {
-		h.log.Error("failed to join result url", zap.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
+	resultURL := joinResultURL(h.config.ResultAddress, shortURL)
 
 	res := ShortenResponse{Result: resultURL}
 
@@ -283,15 +277,10 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
-	if err != nil {
-		h.log.Error("failed to join result url", zap.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
+	resultURL := joinResultURL(h.config.ResultAddress, shortURL)
 
 	w.WriteHeader(status)
-	if _, err := w.Write([]byte(resultURL)); err != nil {
+	if _, err := io.WriteString(w, resultURL); err != nil {
 		h.log.Error("failed to write response body", zap.Error(err))
 		return
 	}
@@ -331,15 +320,9 @@ func (h *Handlers) BatchHandle(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]BatchResponseItem, len(saved))
 	for i, item := range saved {
-		shortURL, err := url.JoinPath(h.config.ResultAddress, item.ShortCode)
-		if err != nil {
-			h.log.Error("failed to join result url", zap.Error(err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
 		resp[i] = BatchResponseItem{
 			CorrelationID: req[i].CorrelationID,
-			ShortURL:      shortURL,
+			ShortURL:      joinResultURL(h.config.ResultAddress, item.ShortCode),
 		}
 	}
 
@@ -364,7 +347,10 @@ func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, val, http.StatusTemporaryRedirect)
+	// Avoid http.Redirect: it calls url.Parse on the target. We only need
+	// to set Location and write the status code.
+	w.Header().Set("Location", val)
+	w.WriteHeader(http.StatusTemporaryRedirect)
 
 	h.publisher.Publish(audit.Event{
 		Action: audit.ActionFollow,
@@ -405,14 +391,8 @@ func (h *Handlers) UserURLsHandle(secret []byte) http.HandlerFunc {
 
 		resp := make([]UserURLItem, len(urls))
 		for i, item := range urls {
-			shortURL, err := url.JoinPath(h.config.ResultAddress, item.ShortCode)
-			if err != nil {
-				h.log.Error("failed to join result url", zap.Error(err))
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				return
-			}
 			resp[i] = UserURLItem{
-				ShortURL:    shortURL,
+				ShortURL:    joinResultURL(h.config.ResultAddress, item.ShortCode),
 				OriginalURL: item.OriginalURL,
 			}
 		}
@@ -490,6 +470,13 @@ func (h *Handlers) saveBatchWithRetry(req []BatchRequestItem, userID string) ([]
 		}
 	}
 	return nil, fmt.Errorf("failed to save batch after %d tries", maxTries)
+}
+
+// joinResultURL builds <base>/<code>. ResultAddress is normalised in
+// config.Load to have no trailing slash, so this concatenation produces
+// the same shape as url.JoinPath without going through url.Parse.
+func joinResultURL(base, code string) string {
+	return base + "/" + code
 }
 
 func generateCode() string {
