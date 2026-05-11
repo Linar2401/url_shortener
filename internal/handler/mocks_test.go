@@ -5,6 +5,7 @@
 package handler
 
 import (
+	"github.com/Linar2401/url_shortener/internal/storage"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -96,16 +97,16 @@ func (_c *MockURLStorer_GetURL_Call) RunAndReturn(run func(code string) (string,
 }
 
 // SaveURL provides a mock function for the type MockURLStorer
-func (_mock *MockURLStorer) SaveURL(code string, value string) error {
-	ret := _mock.Called(code, value)
+func (_mock *MockURLStorer) SaveURL(code string, value string, userID string) error {
+	ret := _mock.Called(code, value, userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveURL")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
-		r0 = returnFunc(code, value)
+	if returnFunc, ok := ret.Get(0).(func(string, string, string) error); ok {
+		r0 = returnFunc(code, value, userID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -120,11 +121,12 @@ type MockURLStorer_SaveURL_Call struct {
 // SaveURL is a helper method to define mock.On call
 //   - code string
 //   - value string
-func (_e *MockURLStorer_Expecter) SaveURL(code interface{}, value interface{}) *MockURLStorer_SaveURL_Call {
-	return &MockURLStorer_SaveURL_Call{Call: _e.mock.On("SaveURL", code, value)}
+//   - userID string
+func (_e *MockURLStorer_Expecter) SaveURL(code interface{}, value interface{}, userID interface{}) *MockURLStorer_SaveURL_Call {
+	return &MockURLStorer_SaveURL_Call{Call: _e.mock.On("SaveURL", code, value, userID)}
 }
 
-func (_c *MockURLStorer_SaveURL_Call) Run(run func(code string, value string)) *MockURLStorer_SaveURL_Call {
+func (_c *MockURLStorer_SaveURL_Call) Run(run func(code string, value string, userID string)) *MockURLStorer_SaveURL_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
@@ -134,9 +136,14 @@ func (_c *MockURLStorer_SaveURL_Call) Run(run func(code string, value string)) *
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -147,7 +154,119 @@ func (_c *MockURLStorer_SaveURL_Call) Return(_a0 error) *MockURLStorer_SaveURL_C
 	return _c
 }
 
-func (_c *MockURLStorer_SaveURL_Call) RunAndReturn(run func(code string, value string) error) *MockURLStorer_SaveURL_Call {
+func (_c *MockURLStorer_SaveURL_Call) RunAndReturn(run func(code string, value string, userID string) error) *MockURLStorer_SaveURL_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SaveBatch provides a mock function for the type MockURLStorer
+func (_mock *MockURLStorer) SaveBatch(items []storage.BatchItem, userID string) error {
+	ret := _mock.Called(items, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveBatch")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func([]storage.BatchItem, string) error); ok {
+		r0 = returnFunc(items, userID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockURLStorer_SaveBatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveBatch'
+type MockURLStorer_SaveBatch_Call struct {
+	*mock.Call
+}
+
+// SaveBatch is a helper method to define mock.On call
+//   - items []storage.BatchItem
+//   - userID string
+func (_e *MockURLStorer_Expecter) SaveBatch(items interface{}, userID interface{}) *MockURLStorer_SaveBatch_Call {
+	return &MockURLStorer_SaveBatch_Call{Call: _e.mock.On("SaveBatch", items, userID)}
+}
+
+func (_c *MockURLStorer_SaveBatch_Call) Return(_a0 error) *MockURLStorer_SaveBatch_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+// GetUserURLs provides a mock function for the type MockURLStorer
+func (_mock *MockURLStorer) GetUserURLs(userID string) ([]storage.UserURL, error) {
+	ret := _mock.Called(userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserURLs")
+	}
+
+	var r0 []storage.UserURL
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(string) ([]storage.UserURL, error)); ok {
+		return returnFunc(userID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) []storage.UserURL); ok {
+		r0 = returnFunc(userID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]storage.UserURL)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
+		r1 = returnFunc(userID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockURLStorer_GetUserURLs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserURLs'
+type MockURLStorer_GetUserURLs_Call struct {
+	*mock.Call
+}
+
+// GetUserURLs is a helper method to define mock.On call
+//   - userID string
+func (_e *MockURLStorer_Expecter) GetUserURLs(userID interface{}) *MockURLStorer_GetUserURLs_Call {
+	return &MockURLStorer_GetUserURLs_Call{Call: _e.mock.On("GetUserURLs", userID)}
+}
+
+func (_c *MockURLStorer_GetUserURLs_Call) Return(_a0 []storage.UserURL, _a1 error) *MockURLStorer_GetUserURLs_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+// DeleteUserURLs provides a mock function for the type MockURLStorer
+func (_mock *MockURLStorer) DeleteUserURLs(codes []string, userID string) error {
+	ret := _mock.Called(codes, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteUserURLs")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func([]string, string) error); ok {
+		r0 = returnFunc(codes, userID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockURLStorer_DeleteUserURLs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteUserURLs'
+type MockURLStorer_DeleteUserURLs_Call struct {
+	*mock.Call
+}
+
+// DeleteUserURLs is a helper method to define mock.On call
+//   - codes []string
+//   - userID string
+func (_e *MockURLStorer_Expecter) DeleteUserURLs(codes interface{}, userID interface{}) *MockURLStorer_DeleteUserURLs_Call {
+	return &MockURLStorer_DeleteUserURLs_Call{Call: _e.mock.On("DeleteUserURLs", codes, userID)}
+}
+
+func (_c *MockURLStorer_DeleteUserURLs_Call) Return(_a0 error) *MockURLStorer_DeleteUserURLs_Call {
+	_c.Call.Return(_a0)
 	return _c
 }
