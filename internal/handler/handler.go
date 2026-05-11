@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Linar2401/url_shortener/internal/audit"
 	"github.com/Linar2401/url_shortener/internal/auth"
 	"github.com/Linar2401/url_shortener/internal/config"
 	"github.com/Linar2401/url_shortener/internal/database"
@@ -49,11 +50,12 @@ type Enqueuer interface {
 }
 
 type Handlers struct {
-	storage URLStorer
-	config  config.Config
-	log     *zap.Logger
-	pinger  Pinger
-	deleter Enqueuer
+	storage   URLStorer
+	config    config.Config
+	log       *zap.Logger
+	pinger    Pinger
+	deleter   Enqueuer
+	publisher *audit.Publisher
 }
 
 type ShortenRequest struct {
@@ -121,7 +123,24 @@ func Serve(cfg *config.Config) error {
 	del := deleter.New(urlStore, log, 64, time.Second)
 	del.Start()
 
-	handlers := New(urlStore, *cfg, log, pinger, del)
+	publisher := audit.NewPublisher(log)
+	if cfg.AuditFile != "" {
+		fileObs, err := audit.NewFileObserver(cfg.AuditFile, log)
+		if err != nil {
+			return fmt.Errorf("failed to initialize audit file sink: %w", err)
+		}
+		defer func() {
+			if err := fileObs.Close(); err != nil {
+				log.Error("failed to close audit file", zap.Error(err))
+			}
+		}()
+		publisher.Subscribe(fileObs)
+	}
+	if cfg.AuditURL != "" {
+		publisher.Subscribe(audit.NewHTTPObserver(cfg.AuditURL, log))
+	}
+
+	handlers := New(urlStore, *cfg, log, pinger, del, publisher)
 
 	log.Info("Running server", zap.String("address", cfg.ServeAddress))
 
@@ -164,13 +183,14 @@ func Serve(cfg *config.Config) error {
 	return nil
 }
 
-func New(storage URLStorer, cfg config.Config, log *zap.Logger, pinger Pinger, deleter Enqueuer) *Handlers {
+func New(storage URLStorer, cfg config.Config, log *zap.Logger, pinger Pinger, deleter Enqueuer, publisher *audit.Publisher) *Handlers {
 	return &Handlers{
-		storage: storage,
-		config:  cfg,
-		log:     log,
-		pinger:  pinger,
-		deleter: deleter,
+		storage:   storage,
+		config:    cfg,
+		log:       log,
+		pinger:    pinger,
+		deleter:   deleter,
+		publisher: publisher,
 	}
 }
 
@@ -231,6 +251,12 @@ func (h *Handlers) ShortenJSONHandle(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("failed to write response body", zap.Error(err))
 		return
 	}
+
+	h.publisher.Publish(audit.Event{
+		Action: audit.ActionShorten,
+		UserID: userID,
+		URL:    req.URL,
+	})
 }
 
 func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
@@ -269,6 +295,12 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("failed to write response body", zap.Error(err))
 		return
 	}
+
+	h.publisher.Publish(audit.Event{
+		Action: audit.ActionShorten,
+		UserID: userID,
+		URL:    string(body),
+	})
 }
 
 func (h *Handlers) BatchHandle(w http.ResponseWriter, r *http.Request) {
@@ -333,6 +365,12 @@ func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, val, http.StatusTemporaryRedirect)
+
+	h.publisher.Publish(audit.Event{
+		Action: audit.ActionFollow,
+		UserID: auth.UserIDFromContext(r.Context()),
+		URL:    val,
+	})
 }
 
 // UserURLsHandle returns a handler that lists URLs owned by the authenticated user.

@@ -56,7 +56,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 				storage.On("SaveURL", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			}
 
-			h := New(storage, *cfg, zap.NewNop(), nil, nil)
+			h := New(storage, *cfg, zap.NewNop(), nil, nil, nil)
 
 			r := chi.NewRouter()
 			r.Post("/", h.CreateHandle)
@@ -148,7 +148,7 @@ func TestHandlers_GetHandle(t *testing.T) {
 				tt.mockBehavior(storage)
 			}
 
-			h := New(storage, *cfg, zap.NewNop(), nil, nil)
+			h := New(storage, *cfg, zap.NewNop(), nil, nil, nil)
 
 			r := chi.NewRouter()
 			r.Get("/{code}", h.GetHandle)
@@ -235,7 +235,7 @@ func TestHandlers_ShortenJSONHandle(t *testing.T) {
 				tt.mockBehavior(storage)
 			}
 
-			h := New(storage, *cfg, zap.NewNop(), nil, nil)
+			h := New(storage, *cfg, zap.NewNop(), nil, nil, nil)
 
 			r := chi.NewRouter()
 			r.Post("/api/shorten", h.ShortenJSONHandle)

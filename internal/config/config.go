@@ -14,6 +14,8 @@ type Config struct {
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	AuthSecret      string `env:"AUTH_SECRET"`
+	AuditFile       string `env:"AUDIT_FILE"`
+	AuditURL        string `env:"AUDIT_URL"`
 }
 
 func NewDefaultConfig() *Config {
@@ -36,6 +38,8 @@ func Load() (*Config, error) {
 	flag.StringVar(&cfg.FileStoragePath, "f", "", "file storage path")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN")
 	flag.StringVar(&cfg.AuthSecret, "s", cfg.AuthSecret, "secret key for signing auth cookies")
+	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file (disabled if empty)")
+	flag.StringVar(&cfg.AuditURL, "audit-url", "", "URL of remote audit sink (disabled if empty)")
 	flag.Parse()
 
 	if err := env.Parse(cfg); err != nil {
