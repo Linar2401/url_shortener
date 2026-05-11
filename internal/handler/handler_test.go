@@ -53,10 +53,10 @@ func TestHandlers_CreateHandle(t *testing.T) {
 			storage := NewMockURLStorer(t)
 
 			if tt.method == http.MethodPost {
-				storage.On("SaveURL", mock.Anything, mock.Anything).Return(nil)
+				storage.On("SaveURL", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			}
 
-			h := New(storage, *cfg, zap.NewNop())
+			h := New(storage, *cfg, zap.NewNop(), nil, nil)
 
 			r := chi.NewRouter()
 			r.Post("/", h.CreateHandle)
@@ -148,7 +148,7 @@ func TestHandlers_GetHandle(t *testing.T) {
 				tt.mockBehavior(storage)
 			}
 
-			h := New(storage, *cfg, zap.NewNop())
+			h := New(storage, *cfg, zap.NewNop(), nil, nil)
 
 			r := chi.NewRouter()
 			r.Get("/{code}", h.GetHandle)
@@ -197,7 +197,7 @@ func TestHandlers_ShortenJSONHandle(t *testing.T) {
 			method: http.MethodPost,
 			body:   `{"url": "https://example.com"}`,
 			mockBehavior: func(s *MockURLStorer) {
-				s.On("SaveURL", mock.Anything, "https://example.com").Return(nil)
+				s.On("SaveURL", mock.Anything, "https://example.com", mock.Anything).Return(nil)
 			},
 			want: want{
 				statusCode: http.StatusCreated,
@@ -235,7 +235,7 @@ func TestHandlers_ShortenJSONHandle(t *testing.T) {
 				tt.mockBehavior(storage)
 			}
 
-			h := New(storage, *cfg, zap.NewNop())
+			h := New(storage, *cfg, zap.NewNop(), nil, nil)
 
 			r := chi.NewRouter()
 			r.Post("/api/shorten", h.ShortenJSONHandle)

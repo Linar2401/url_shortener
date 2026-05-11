@@ -12,6 +12,8 @@ type Config struct {
 	ResultAddress   string `env:"BASE_URL"`
 	LogLevel        string `env:"LOG_LEVEL"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
+	AuthSecret      string `env:"AUTH_SECRET"`
 }
 
 func NewDefaultConfig() *Config {
@@ -19,7 +21,9 @@ func NewDefaultConfig() *Config {
 		ServeAddress:    "localhost:8080",
 		ResultAddress:   "http://localhost:8080",
 		LogLevel:        "info",
-		FileStoragePath: "short-url-db.json",
+		FileStoragePath: "",
+		DatabaseDSN:     "",
+		AuthSecret:      "url-shortener-default-secret",
 	}
 }
 
@@ -29,7 +33,9 @@ func Load() (*Config, error) {
 	flag.StringVar(&cfg.ServeAddress, "a", "localhost:8080", "address and port to run server")
 	flag.StringVar(&cfg.ResultAddress, "b", "http://localhost:8080", "address and port to answer")
 	flag.StringVar(&cfg.LogLevel, "log_level", "info", "Logging level")
-	flag.StringVar(&cfg.FileStoragePath, "f", "short-url-db.json", "file storage path")
+	flag.StringVar(&cfg.FileStoragePath, "f", "", "file storage path")
+	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN")
+	flag.StringVar(&cfg.AuthSecret, "s", cfg.AuthSecret, "secret key for signing auth cookies")
 	flag.Parse()
 
 	if err := env.Parse(cfg); err != nil {
