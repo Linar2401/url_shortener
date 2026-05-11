@@ -12,6 +12,7 @@ import (
 	"github.com/Linar2401/url_shortener/internal/config"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
 
 func TestHandlers_CreateHandle(t *testing.T) {
@@ -55,7 +56,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 				storage.On("SaveURL", mock.Anything, mock.Anything).Return(nil)
 			}
 
-			h := New(storage, *cfg)
+			h := New(storage, *cfg, zap.NewNop())
 
 			r := chi.NewRouter()
 			r.Post("/", h.CreateHandle)
@@ -76,7 +77,10 @@ func TestHandlers_CreateHandle(t *testing.T) {
 			}
 
 			if tt.want.response != "" {
-				body, _ := io.ReadAll(result.Body)
+				body, err := io.ReadAll(result.Body)
+				if err != nil {
+					t.Fatalf("Error reading response body: %v", err)
+				}
 				// Since the code is generated randomly, we can only check the prefix
 				if !strings.HasPrefix(string(body), tt.want.response) {
 					t.Errorf("Expected body to start with %q, got %q", tt.want.response, string(body))
@@ -144,7 +148,7 @@ func TestHandlers_GetHandle(t *testing.T) {
 				tt.mockBehavior(storage)
 			}
 
-			h := New(storage, *cfg)
+			h := New(storage, *cfg, zap.NewNop())
 
 			r := chi.NewRouter()
 			r.Get("/{code}", h.GetHandle)
@@ -231,7 +235,7 @@ func TestHandlers_ShortenJSONHandle(t *testing.T) {
 				tt.mockBehavior(storage)
 			}
 
-			h := New(storage, *cfg)
+			h := New(storage, *cfg, zap.NewNop())
 
 			r := chi.NewRouter()
 			r.Post("/api/shorten", h.ShortenJSONHandle)
@@ -252,7 +256,10 @@ func TestHandlers_ShortenJSONHandle(t *testing.T) {
 			}
 
 			if tt.want.response != "" {
-				body, _ := io.ReadAll(result.Body)
+				body, err := io.ReadAll(result.Body)
+				if err != nil {
+					t.Fatalf("Error reading response body: %v", err)
+				}
 				if !strings.HasPrefix(string(body), tt.want.response) {
 					t.Errorf("Expected body to start with %q, got %q", tt.want.response, string(body))
 				}

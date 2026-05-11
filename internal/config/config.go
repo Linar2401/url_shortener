@@ -4,7 +4,7 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/caarlos0/env/v6"
+	"github.com/caarlos0/env/v11"
 )
 
 type Config struct {
@@ -24,7 +24,7 @@ func NewDefaultConfig() *Config {
 }
 
 func Load() (*Config, error) {
-	var cfg = NewDefaultConfig()
+	cfg := NewDefaultConfig()
 
 	flag.StringVar(&cfg.ServeAddress, "a", "localhost:8080", "address and port to run server")
 	flag.StringVar(&cfg.ResultAddress, "b", "http://localhost:8080", "address and port to answer")

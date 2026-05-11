@@ -3,8 +3,8 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
-	"log"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -31,6 +31,7 @@ type URLStorer interface {
 type Handlers struct {
 	storage URLStorer
 	config  config.Config
+	log     *zap.Logger
 }
 
 type ShortenRequest struct {
@@ -42,37 +43,34 @@ type ShortenResponse struct {
 }
 
 func Serve(cfg *config.Config) error {
-	r := chi.NewRouter()
+	log, err := logger.New(cfg.LogLevel)
+	if err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
 
 	urlStore, err := storage.New(cfg.FileStoragePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to initialize a URL store: %w", err)
 	}
-	handlers := New(urlStore, *cfg)
+	handlers := New(urlStore, *cfg, log)
 
-	if err := logger.Initialize(cfg.LogLevel); err != nil {
-		return err
-	}
+	log.Info("Running server", zap.String("address", cfg.ServeAddress))
 
-	logger.Log.Info("Running server", zap.String("address", cfg.ServeAddress))
+	r := chi.NewRouter()
+	r.Use(middleware.GzipMiddleware(log))
 
-	r.Use(middleware.GzipMiddleware)
-
-	// оборачиваем хендлер webhook в middleware с логированием
-
-	//r.Use(middleware.Logger)
-
-	r.Method(http.MethodPost, "/", logger.RequestLogger(handlers.CreateHandle))
-	r.Method(http.MethodGet, "/{code}", logger.RequestLogger(handlers.GetHandle))
-	r.Method(http.MethodPost, "/api/shorten", logger.RequestLogger(handlers.ShortenJSONHandle))
+	r.Method(http.MethodPost, "/", logger.RequestLogger(log, handlers.CreateHandle))
+	r.Method(http.MethodGet, "/{code}", logger.RequestLogger(log, handlers.GetHandle))
+	r.Method(http.MethodPost, "/api/shorten", logger.RequestLogger(log, handlers.ShortenJSONHandle))
 
 	return http.ListenAndServe(cfg.ServeAddress, r)
 }
 
-func New(storage URLStorer, cfg config.Config) *Handlers {
+func New(storage URLStorer, cfg config.Config, log *zap.Logger) *Handlers {
 	return &Handlers{
 		storage: storage,
 		config:  cfg,
+		log:     log,
 	}
 }
 
@@ -88,9 +86,72 @@ func (h *Handlers) ShortenJSONHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL := req.URL
+	shortURL, err := h.saveWithRetry(req.URL)
+	if err != nil {
+		h.log.Error("failed to save url", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 
-	var shortURL string
+	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
+	if err != nil {
+		h.log.Error("failed to join result url", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	res := ShortenResponse{Result: resultURL}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		h.log.Error("failed to write response body", zap.Error(err))
+		return
+	}
+}
+
+func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.log.Error("failed to read request body", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	shortURL, err := h.saveWithRetry(string(body))
+	if err != nil {
+		h.log.Error("failed to save url", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
+	if err != nil {
+		h.log.Error("failed to join result url", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	if _, err := w.Write([]byte(resultURL)); err != nil {
+		h.log.Error("failed to write response body", zap.Error(err))
+		return
+	}
+}
+
+func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+
+	val, err := h.storage.GetURL(code)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	http.Redirect(w, r, val, http.StatusTemporaryRedirect)
+}
+
+func (h *Handlers) saveWithRetry(originalURL string) (string, error) {
 	for n := 0; n < maxTries; n++ {
 		b := make([]byte, codeLen)
 		for i := range b {
@@ -100,100 +161,11 @@ func (h *Handlers) ShortenJSONHandle(w http.ResponseWriter, r *http.Request) {
 
 		err := h.storage.SaveURL(code, originalURL)
 		if err == nil {
-			shortURL = code
-			break
+			return code, nil
 		}
 		if !errors.Is(err, storage.ErrCollision) {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			log.Println("error with save url")
-			return
+			return "", err
 		}
 	}
-
-	if shortURL == "" {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Println("error with save url: max tries reached")
-		return
-	}
-
-	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Println("error with join path")
-		return
-	}
-
-	res := ShortenResponse{Result: resultURL}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(res); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Println("error with write response body")
-		return
-	}
-}
-
-func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Println("error with read body")
-		return
-	}
-
-	var shortURL string
-	shortURL = ""
-	for n := 0; n < maxTries; n++ {
-		b := make([]byte, codeLen)
-		for i := range b {
-			b[i] = charset[rand.IntN(len(charset))]
-		}
-		code := string(b)
-
-		err = h.storage.SaveURL(code, string(body))
-		if err == nil {
-			shortURL = code
-			break
-		}
-		if !errors.Is(err, storage.ErrCollision) {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			log.Println("error with save url")
-			return
-		}
-	}
-
-	if shortURL == "" {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Println("error with save url: max tries reached")
-		return
-	}
-
-	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Println("error with join path")
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	_, err = w.Write([]byte(resultURL))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Println("error with write response body")
-		return
-	}
-}
-
-func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
-	code := r.PathValue("code")
-
-	val, err := h.storage.GetURL(code)
-
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
-	}
-
-	http.Redirect(w, r, val, http.StatusTemporaryRedirect)
+	return "", fmt.Errorf("failed to generate unique short URL after %d tries", maxTries)
 }

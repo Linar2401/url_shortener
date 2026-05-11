@@ -7,8 +7,6 @@ import (
 	"go.uber.org/zap"
 )
 
-var Log *zap.Logger = zap.NewNop()
-
 type (
 	responseData struct {
 		status int
@@ -32,22 +30,17 @@ func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.responseData.status = statusCode
 }
 
-func Initialize(level string) error {
+func New(level string) (*zap.Logger, error) {
 	lvl, err := zap.ParseAtomicLevel(level)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cfg := zap.NewProductionConfig()
 	cfg.Level = lvl
-	zl, err := cfg.Build()
-	if err != nil {
-		return err
-	}
-	Log = zl
-	return nil
+	return cfg.Build()
 }
 
-func RequestLogger(h http.HandlerFunc) http.Handler {
+func RequestLogger(log *zap.Logger, h http.HandlerFunc) http.Handler {
 	logFn := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -63,7 +56,7 @@ func RequestLogger(h http.HandlerFunc) http.Handler {
 
 		duration := time.Since(start)
 
-		Log.Info("got incoming HTTP request",
+		log.Info("got incoming HTTP request",
 			zap.String("uri", r.RequestURI),
 			zap.String("method", r.Method),
 			zap.Int("status", responseData.status),
