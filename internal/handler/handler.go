@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 
 	"github.com/Linar2401/url_shortener/internal/config"
+	"github.com/Linar2401/url_shortener/internal/database"
 	"github.com/Linar2401/url_shortener/internal/logger"
 	"github.com/Linar2401/url_shortener/internal/middleware"
 	"github.com/Linar2401/url_shortener/internal/storage"
@@ -28,10 +30,15 @@ type URLStorer interface {
 	GetURL(code string) (string, error)
 }
 
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
 type Handlers struct {
 	storage URLStorer
 	config  config.Config
 	log     *zap.Logger
+	pinger  Pinger
 }
 
 type ShortenRequest struct {
@@ -48,11 +55,40 @@ func Serve(cfg *config.Config) error {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 
-	urlStore, err := storage.New(cfg.FileStoragePath)
-	if err != nil {
-		return fmt.Errorf("failed to initialize a URL store: %w", err)
+	var urlStore URLStorer
+	var pinger Pinger
+
+	switch {
+	case cfg.DatabaseDSN != "":
+		db, err := database.New(cfg.DatabaseDSN)
+		if err != nil {
+			return fmt.Errorf("failed to initialize database: %w", err)
+		}
+		defer func() {
+			if err := db.Close(); err != nil {
+				log.Error("failed to close database", zap.Error(err))
+			}
+		}()
+		if err := db.Migrate(); err != nil {
+			return fmt.Errorf("failed to run migrations: %w", err)
+		}
+		urlStore = db
+		pinger = db
+	case cfg.FileStoragePath != "":
+		fs, err := storage.New(cfg.FileStoragePath)
+		if err != nil {
+			return fmt.Errorf("failed to initialize file storage: %w", err)
+		}
+		urlStore = fs
+	default:
+		fs, err := storage.New("")
+		if err != nil {
+			return fmt.Errorf("failed to initialize in-memory storage: %w", err)
+		}
+		urlStore = fs
 	}
-	handlers := New(urlStore, *cfg, log)
+
+	handlers := New(urlStore, *cfg, log, pinger)
 
 	log.Info("Running server", zap.String("address", cfg.ServeAddress))
 
@@ -62,16 +98,32 @@ func Serve(cfg *config.Config) error {
 	r.Method(http.MethodPost, "/", logger.RequestLogger(log, handlers.CreateHandle))
 	r.Method(http.MethodGet, "/{code}", logger.RequestLogger(log, handlers.GetHandle))
 	r.Method(http.MethodPost, "/api/shorten", logger.RequestLogger(log, handlers.ShortenJSONHandle))
+	r.Method(http.MethodGet, "/ping", logger.RequestLogger(log, handlers.PingHandle))
 
 	return http.ListenAndServe(cfg.ServeAddress, r)
 }
 
-func New(storage URLStorer, cfg config.Config, log *zap.Logger) *Handlers {
+func New(storage URLStorer, cfg config.Config, log *zap.Logger, pinger Pinger) *Handlers {
 	return &Handlers{
 		storage: storage,
 		config:  cfg,
 		log:     log,
+		pinger:  pinger,
 	}
+}
+
+func (h *Handlers) PingHandle(w http.ResponseWriter, r *http.Request) {
+	if h.pinger == nil {
+		h.log.Error("database is not configured")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if err := h.pinger.Ping(r.Context()); err != nil {
+		h.log.Error("failed to ping database", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handlers) ShortenJSONHandle(w http.ResponseWriter, r *http.Request) {
