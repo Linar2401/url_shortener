@@ -67,7 +67,9 @@ func TestMiddleware_IssuesCookieWhenMissing(t *testing.T) {
 	if captured == "" {
 		t.Error("expected user id to be set in context")
 	}
-	cookies := rec.Result().Cookies()
+	res := rec.Result()
+	defer func() { _ = res.Body.Close() }()
+	cookies := res.Cookies()
 	var found bool
 	for _, c := range cookies {
 		if c.Name == CookieName {
