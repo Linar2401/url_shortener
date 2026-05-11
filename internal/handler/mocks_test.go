@@ -236,3 +236,37 @@ func (_c *MockURLStorer_GetUserURLs_Call) Return(_a0 []storage.UserURL, _a1 erro
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
+
+// DeleteUserURLs provides a mock function for the type MockURLStorer
+func (_mock *MockURLStorer) DeleteUserURLs(codes []string, userID string) error {
+	ret := _mock.Called(codes, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteUserURLs")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func([]string, string) error); ok {
+		r0 = returnFunc(codes, userID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockURLStorer_DeleteUserURLs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteUserURLs'
+type MockURLStorer_DeleteUserURLs_Call struct {
+	*mock.Call
+}
+
+// DeleteUserURLs is a helper method to define mock.On call
+//   - codes []string
+//   - userID string
+func (_e *MockURLStorer_Expecter) DeleteUserURLs(codes interface{}, userID interface{}) *MockURLStorer_DeleteUserURLs_Call {
+	return &MockURLStorer_DeleteUserURLs_Call{Call: _e.mock.On("DeleteUserURLs", codes, userID)}
+}
+
+func (_c *MockURLStorer_DeleteUserURLs_Call) Return(_a0 error) *MockURLStorer_DeleteUserURLs_Call {
+	_c.Call.Return(_a0)
+	return _c
+}

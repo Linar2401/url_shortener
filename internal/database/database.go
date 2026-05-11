@@ -6,6 +6,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Linar2401/url_shortener/internal/storage"
@@ -144,18 +145,51 @@ func (d *DB) GetURL(code string) (string, error) {
 	defer cancel()
 
 	var original string
+	var isDeleted bool
 	//goland:noinspection SqlNoDataSourceInspection
 	err := d.conn.QueryRowContext(ctx,
-		"SELECT original_url FROM urls WHERE short_code = $1",
+		"SELECT original_url, is_deleted FROM urls WHERE short_code = $1",
 		code,
-	).Scan(&original)
+	).Scan(&original, &isDeleted)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("url not found: %s", code)
 		}
 		return "", err
 	}
+	if isDeleted {
+		return "", storage.ErrDeleted
+	}
 	return original, nil
+}
+
+// DeleteUserURLs marks all rows whose short_code is in codes and whose user_id matches
+// as deleted, in a single batched UPDATE.
+func (d *DB) DeleteUserURLs(codes []string, userID string) error {
+	if len(codes) == 0 || userID == "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	placeholders := make([]string, len(codes))
+	args := make([]any, 0, len(codes)+1)
+	args = append(args, userID)
+	for i, code := range codes {
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+		args = append(args, code)
+	}
+
+	//goland:noinspection SqlNoDataSourceInspection
+	query := fmt.Sprintf(
+		"UPDATE urls SET is_deleted = TRUE WHERE user_id = $1 AND short_code IN (%s)",
+		strings.Join(placeholders, ","),
+	)
+	if _, err := d.conn.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("failed to mark urls deleted: %w", err)
+	}
+	return nil
 }
 
 func (d *DB) GetUserURLs(userID string) ([]storage.UserURL, error) {
@@ -164,7 +198,7 @@ func (d *DB) GetUserURLs(userID string) ([]storage.UserURL, error) {
 
 	//goland:noinspection SqlNoDataSourceInspection
 	rows, err := d.conn.QueryContext(ctx,
-		"SELECT short_code, original_url FROM urls WHERE user_id = $1",
+		"SELECT short_code, original_url FROM urls WHERE user_id = $1 AND is_deleted = FALSE",
 		userID,
 	)
 	if err != nil {

@@ -9,10 +9,15 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/Linar2401/url_shortener/internal/auth"
 	"github.com/Linar2401/url_shortener/internal/config"
 	"github.com/Linar2401/url_shortener/internal/database"
+	"github.com/Linar2401/url_shortener/internal/deleter"
 	"github.com/Linar2401/url_shortener/internal/logger"
 	"github.com/Linar2401/url_shortener/internal/middleware"
 	"github.com/Linar2401/url_shortener/internal/storage"
@@ -31,10 +36,16 @@ type URLStorer interface {
 	GetURL(code string) (string, error)
 	SaveBatch(items []storage.BatchItem, userID string) error
 	GetUserURLs(userID string) ([]storage.UserURL, error)
+	DeleteUserURLs(codes []string, userID string) error
 }
 
 type Pinger interface {
 	Ping(ctx context.Context) error
+}
+
+// Enqueuer is the deleter-side dependency the DELETE handler needs.
+type Enqueuer interface {
+	Enqueue(codes []string, userID string)
 }
 
 type Handlers struct {
@@ -42,6 +53,7 @@ type Handlers struct {
 	config  config.Config
 	log     *zap.Logger
 	pinger  Pinger
+	deleter Enqueuer
 }
 
 type ShortenRequest struct {
@@ -106,7 +118,10 @@ func Serve(cfg *config.Config) error {
 		urlStore = fs
 	}
 
-	handlers := New(urlStore, *cfg, log, pinger)
+	del := deleter.New(urlStore, log, 64, time.Second)
+	del.Start()
+
+	handlers := New(urlStore, *cfg, log, pinger, del)
 
 	log.Info("Running server", zap.String("address", cfg.ServeAddress))
 
@@ -121,17 +136,41 @@ func Serve(cfg *config.Config) error {
 	r.Method(http.MethodPost, "/api/shorten", logger.RequestLogger(log, handlers.ShortenJSONHandle))
 	r.Method(http.MethodPost, "/api/shorten/batch", logger.RequestLogger(log, handlers.BatchHandle))
 	r.Method(http.MethodGet, "/api/user/urls", logger.RequestLogger(log, handlers.UserURLsHandle(secret)))
+	r.Method(http.MethodDelete, "/api/user/urls", logger.RequestLogger(log, handlers.DeleteUserURLsHandle(secret)))
 	r.Method(http.MethodGet, "/ping", logger.RequestLogger(log, handlers.PingHandle))
 
-	return http.ListenAndServe(cfg.ServeAddress, r)
+	srv := &http.Server{Addr: cfg.ServeAddress, Handler: r}
+
+	idleClosed := make(chan struct{})
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		<-sig
+		log.Info("shutdown signal received")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Error("server shutdown error", zap.Error(err))
+		}
+		del.Stop(shutdownCtx)
+		close(idleClosed)
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	<-idleClosed
+	return nil
 }
 
-func New(storage URLStorer, cfg config.Config, log *zap.Logger, pinger Pinger) *Handlers {
+func New(storage URLStorer, cfg config.Config, log *zap.Logger, pinger Pinger, deleter Enqueuer) *Handlers {
 	return &Handlers{
 		storage: storage,
 		config:  cfg,
 		log:     log,
 		pinger:  pinger,
+		deleter: deleter,
 	}
 }
 
@@ -285,6 +324,10 @@ func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
 
 	val, err := h.storage.GetURL(code)
 	if err != nil {
+		if errors.Is(err, storage.ErrDeleted) {
+			http.Error(w, http.StatusText(http.StatusGone), http.StatusGone)
+			return
+		}
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
@@ -342,6 +385,37 @@ func (h *Handlers) UserURLsHandle(secret []byte) http.HandlerFunc {
 			h.log.Error("failed to write response body", zap.Error(err))
 			return
 		}
+	}
+}
+
+// DeleteUserURLsHandle accepts a JSON array of short codes and asynchronously
+// marks them as deleted for the authenticated user. Returns 202 immediately.
+func (h *Handlers) DeleteUserURLsHandle(secret []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cookie, err := r.Cookie(auth.CookieName); err == nil {
+			if _, vErr := auth.Verify(cookie.Value, secret); vErr != nil {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+		}
+
+		userID := auth.UserIDFromContext(r.Context())
+		if userID == "" {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var codes []string
+		if err := json.NewDecoder(r.Body).Decode(&codes); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+
+		if h.deleter != nil && len(codes) > 0 {
+			h.deleter.Enqueue(codes, userID)
+		}
+
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 

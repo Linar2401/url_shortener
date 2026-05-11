@@ -10,7 +10,10 @@ import (
 	"sync"
 )
 
-var ErrCollision = errors.New("collision")
+var (
+	ErrCollision = errors.New("collision")
+	ErrDeleted   = errors.New("url is deleted")
+)
 
 // ConflictError signals that the original URL is already stored under ShortCode.
 type ConflictError struct {
@@ -26,6 +29,7 @@ type FileRecord struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 	UserID      string `json:"user_id,omitempty"`
+	IsDeleted   bool   `json:"is_deleted,omitempty"`
 }
 
 type BatchItem struct {
@@ -205,7 +209,35 @@ func (s *URLStore) GetURL(code string) (string, error) {
 	if !ok {
 		return "", errors.New("url not found")
 	}
+	if record.IsDeleted {
+		return "", ErrDeleted
+	}
 	return record.OriginalURL, nil
+}
+
+func (s *URLStore) DeleteUserURLs(codes []string, userID string) error {
+	if len(codes) == 0 || userID == "" {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	changed := false
+	for _, code := range codes {
+		record, ok := s.codes[code]
+		if !ok || record.UserID != userID || record.IsDeleted {
+			continue
+		}
+		record.IsDeleted = true
+		s.codes[code] = record
+		changed = true
+	}
+
+	if changed && s.fileStoragePath != "" {
+		return s.persist()
+	}
+	return nil
 }
 
 func (s *URLStore) GetUserURLs(userID string) ([]UserURL, error) {
@@ -214,7 +246,7 @@ func (s *URLStore) GetUserURLs(userID string) ([]UserURL, error) {
 
 	var result []UserURL
 	for _, record := range s.codes {
-		if record.UserID == userID {
+		if record.UserID == userID && !record.IsDeleted {
 			result = append(result, UserURL{
 				ShortCode:   record.ShortURL,
 				OriginalURL: record.OriginalURL,
