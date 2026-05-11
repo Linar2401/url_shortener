@@ -18,6 +18,11 @@ type FileRecord struct {
 	OriginalURL string `json:"original_url"`
 }
 
+type BatchItem struct {
+	ShortCode   string
+	OriginalURL string
+}
+
 type URLStore struct {
 	mu              sync.Mutex
 	codes           map[string]FileRecord
@@ -127,6 +132,35 @@ func (s *URLStore) SaveURL(code string, value string) error {
 		}
 	}
 
+	return nil
+}
+
+func (s *URLStore) SaveBatch(items []BatchItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, item := range items {
+		if _, ok := s.codes[item.ShortCode]; ok {
+			return fmt.Errorf("%w: %s", ErrCollision, item.ShortCode)
+		}
+	}
+
+	for _, item := range items {
+		s.uuidCounter++
+		s.codes[item.ShortCode] = FileRecord{
+			UUID:        strconv.Itoa(s.uuidCounter),
+			ShortURL:    item.ShortCode,
+			OriginalURL: item.OriginalURL,
+		}
+	}
+
+	if s.fileStoragePath != "" {
+		return s.persist()
+	}
 	return nil
 }
 

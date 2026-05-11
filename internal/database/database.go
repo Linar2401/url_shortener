@@ -81,6 +81,45 @@ func (d *DB) SaveURL(code string, value string) error {
 	return nil
 }
 
+func (d *DB) SaveBatch(items []storage.BatchItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tx, err := d.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	//goland:noinspection SqlNoDataSourceInspection
+	stmt, err := tx.PrepareContext(ctx,
+		"INSERT INTO urls (short_code, original_url) VALUES ($1, $2)",
+	)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for _, item := range items {
+		if _, err := stmt.ExecContext(ctx, item.ShortCode, item.OriginalURL); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return fmt.Errorf("%w: %s", storage.ErrCollision, item.ShortCode)
+			}
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit tx: %w", err)
+	}
+	return nil
+}
+
 func (d *DB) GetURL(code string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
