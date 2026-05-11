@@ -25,9 +25,15 @@ type FileRecord struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id,omitempty"`
 }
 
 type BatchItem struct {
+	ShortCode   string
+	OriginalURL string
+}
+
+type UserURL struct {
 	ShortCode   string
 	OriginalURL string
 }
@@ -121,7 +127,7 @@ func (s *URLStore) persist() error {
 	return encoder.Encode(records)
 }
 
-func (s *URLStore) SaveURL(code string, value string) error {
+func (s *URLStore) SaveURL(code string, value string, userID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -138,6 +144,7 @@ func (s *URLStore) SaveURL(code string, value string) error {
 		UUID:        strconv.Itoa(s.uuidCounter),
 		ShortURL:    code,
 		OriginalURL: value,
+		UserID:      userID,
 	}
 
 	s.codes[code] = record
@@ -152,7 +159,7 @@ func (s *URLStore) SaveURL(code string, value string) error {
 	return nil
 }
 
-func (s *URLStore) SaveBatch(items []BatchItem) error {
+func (s *URLStore) SaveBatch(items []BatchItem, userID string) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -179,6 +186,7 @@ func (s *URLStore) SaveBatch(items []BatchItem) error {
 			UUID:        strconv.Itoa(s.uuidCounter),
 			ShortURL:    item.ShortCode,
 			OriginalURL: item.OriginalURL,
+			UserID:      userID,
 		}
 		s.originals[item.OriginalURL] = item.ShortCode
 	}
@@ -198,4 +206,20 @@ func (s *URLStore) GetURL(code string) (string, error) {
 		return "", errors.New("url not found")
 	}
 	return record.OriginalURL, nil
+}
+
+func (s *URLStore) GetUserURLs(userID string) ([]UserURL, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var result []UserURL
+	for _, record := range s.codes {
+		if record.UserID == userID {
+			result = append(result, UserURL{
+				ShortCode:   record.ShortURL,
+				OriginalURL: record.OriginalURL,
+			})
+		}
+	}
+	return result, nil
 }

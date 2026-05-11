@@ -62,14 +62,14 @@ func (d *DB) Ping(ctx context.Context) error {
 	return d.conn.PingContext(ctx)
 }
 
-func (d *DB) SaveURL(code string, value string) error {
+func (d *DB) SaveURL(code string, value string, userID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	//goland:noinspection SqlNoDataSourceInspection
 	_, err := d.conn.ExecContext(ctx,
-		"INSERT INTO urls (short_code, original_url) VALUES ($1, $2)",
-		code, value,
+		"INSERT INTO urls (short_code, original_url, user_id) VALUES ($1, $2, $3)",
+		code, value, userID,
 	)
 	if err == nil {
 		return nil
@@ -96,7 +96,7 @@ func (d *DB) SaveURL(code string, value string) error {
 	return fmt.Errorf("%w: %s", storage.ErrCollision, code)
 }
 
-func (d *DB) SaveBatch(items []storage.BatchItem) error {
+func (d *DB) SaveBatch(items []storage.BatchItem, userID string) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -112,7 +112,7 @@ func (d *DB) SaveBatch(items []storage.BatchItem) error {
 
 	//goland:noinspection SqlNoDataSourceInspection
 	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO urls (short_code, original_url) VALUES ($1, $2)
+		`INSERT INTO urls (short_code, original_url, user_id) VALUES ($1, $2, $3)
 		 ON CONFLICT (original_url) DO UPDATE SET original_url = EXCLUDED.original_url
 		 RETURNING short_code`,
 	)
@@ -123,7 +123,7 @@ func (d *DB) SaveBatch(items []storage.BatchItem) error {
 
 	for i, item := range items {
 		var returnedCode string
-		if err := stmt.QueryRowContext(ctx, item.ShortCode, item.OriginalURL).Scan(&returnedCode); err != nil {
+		if err := stmt.QueryRowContext(ctx, item.ShortCode, item.OriginalURL, userID).Scan(&returnedCode); err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 				return fmt.Errorf("%w: %s", storage.ErrCollision, item.ShortCode)
@@ -156,6 +156,34 @@ func (d *DB) GetURL(code string) (string, error) {
 		return "", err
 	}
 	return original, nil
+}
+
+func (d *DB) GetUserURLs(userID string) ([]storage.UserURL, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	//goland:noinspection SqlNoDataSourceInspection
+	rows, err := d.conn.QueryContext(ctx,
+		"SELECT short_code, original_url FROM urls WHERE user_id = $1",
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []storage.UserURL
+	for rows.Next() {
+		var item storage.UserURL
+		if err := rows.Scan(&item.ShortCode, &item.OriginalURL); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (d *DB) Close() error {

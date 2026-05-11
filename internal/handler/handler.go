@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/Linar2401/url_shortener/internal/auth"
 	"github.com/Linar2401/url_shortener/internal/config"
 	"github.com/Linar2401/url_shortener/internal/database"
 	"github.com/Linar2401/url_shortener/internal/logger"
@@ -26,9 +27,10 @@ const (
 )
 
 type URLStorer interface {
-	SaveURL(code string, value string) error
+	SaveURL(code string, value string, userID string) error
 	GetURL(code string) (string, error)
-	SaveBatch(items []storage.BatchItem) error
+	SaveBatch(items []storage.BatchItem, userID string) error
+	GetUserURLs(userID string) ([]storage.UserURL, error)
 }
 
 type Pinger interface {
@@ -58,6 +60,11 @@ type BatchRequestItem struct {
 type BatchResponseItem struct {
 	CorrelationID string `json:"correlation_id"`
 	ShortURL      string `json:"short_url"`
+}
+
+type UserURLItem struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
 }
 
 func Serve(cfg *config.Config) error {
@@ -103,13 +110,17 @@ func Serve(cfg *config.Config) error {
 
 	log.Info("Running server", zap.String("address", cfg.ServeAddress))
 
+	secret := []byte(cfg.AuthSecret)
+
 	r := chi.NewRouter()
 	r.Use(middleware.GzipMiddleware(log))
+	r.Use(auth.Middleware(secret, log))
 
 	r.Method(http.MethodPost, "/", logger.RequestLogger(log, handlers.CreateHandle))
 	r.Method(http.MethodGet, "/{code}", logger.RequestLogger(log, handlers.GetHandle))
 	r.Method(http.MethodPost, "/api/shorten", logger.RequestLogger(log, handlers.ShortenJSONHandle))
 	r.Method(http.MethodPost, "/api/shorten/batch", logger.RequestLogger(log, handlers.BatchHandle))
+	r.Method(http.MethodGet, "/api/user/urls", logger.RequestLogger(log, handlers.UserURLsHandle(secret)))
 	r.Method(http.MethodGet, "/ping", logger.RequestLogger(log, handlers.PingHandle))
 
 	return http.ListenAndServe(cfg.ServeAddress, r)
@@ -150,8 +161,10 @@ func (h *Handlers) ShortenJSONHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := auth.UserIDFromContext(r.Context())
+
 	status := http.StatusCreated
-	shortURL, err := h.saveWithRetry(req.URL)
+	shortURL, err := h.saveWithRetry(req.URL, userID)
 	if err != nil {
 		var conflict *storage.ConflictError
 		if errors.As(err, &conflict) {
@@ -189,8 +202,10 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := auth.UserIDFromContext(r.Context())
+
 	status := http.StatusCreated
-	shortURL, err := h.saveWithRetry(string(body))
+	shortURL, err := h.saveWithRetry(string(body), userID)
 	if err != nil {
 		var conflict *storage.ConflictError
 		if errors.As(err, &conflict) {
@@ -234,7 +249,9 @@ func (h *Handlers) BatchHandle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	saved, err := h.saveBatchWithRetry(req)
+	userID := auth.UserIDFromContext(r.Context())
+
+	saved, err := h.saveBatchWithRetry(req, userID)
 	if err != nil {
 		h.log.Error("failed to save batch", zap.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -275,11 +292,64 @@ func (h *Handlers) GetHandle(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, val, http.StatusTemporaryRedirect)
 }
 
-func (h *Handlers) saveWithRetry(originalURL string) (string, error) {
+// UserURLsHandle returns a handler that lists URLs owned by the authenticated user.
+// secret is the same key used by the auth middleware; it lets the handler enforce
+// the strict 401 contract when the incoming cookie cannot be verified into a user ID.
+func (h *Handlers) UserURLsHandle(secret []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cookie, err := r.Cookie(auth.CookieName); err == nil {
+			if _, vErr := auth.Verify(cookie.Value, secret); vErr != nil {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+		}
+
+		userID := auth.UserIDFromContext(r.Context())
+		if userID == "" {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		urls, err := h.storage.GetUserURLs(userID)
+		if err != nil {
+			h.log.Error("failed to fetch user urls", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if len(urls) == 0 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		resp := make([]UserURLItem, len(urls))
+		for i, item := range urls {
+			shortURL, err := url.JoinPath(h.config.ResultAddress, item.ShortCode)
+			if err != nil {
+				h.log.Error("failed to join result url", zap.Error(err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+			resp[i] = UserURLItem{
+				ShortURL:    shortURL,
+				OriginalURL: item.OriginalURL,
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			h.log.Error("failed to write response body", zap.Error(err))
+			return
+		}
+	}
+}
+
+func (h *Handlers) saveWithRetry(originalURL string, userID string) (string, error) {
 	for n := 0; n < maxTries; n++ {
 		code := generateCode()
 
-		err := h.storage.SaveURL(code, originalURL)
+		err := h.storage.SaveURL(code, originalURL, userID)
 		if err == nil {
 			return code, nil
 		}
@@ -290,7 +360,7 @@ func (h *Handlers) saveWithRetry(originalURL string) (string, error) {
 	return "", fmt.Errorf("failed to generate unique short URL after %d tries", maxTries)
 }
 
-func (h *Handlers) saveBatchWithRetry(req []BatchRequestItem) ([]storage.BatchItem, error) {
+func (h *Handlers) saveBatchWithRetry(req []BatchRequestItem, userID string) ([]storage.BatchItem, error) {
 	for n := 0; n < maxTries; n++ {
 		batch := make([]storage.BatchItem, len(req))
 		for i, item := range req {
@@ -299,7 +369,7 @@ func (h *Handlers) saveBatchWithRetry(req []BatchRequestItem) ([]storage.BatchIt
 				OriginalURL: item.OriginalURL,
 			}
 		}
-		err := h.storage.SaveBatch(batch)
+		err := h.storage.SaveBatch(batch, userID)
 		if err == nil {
 			return batch, nil
 		}

@@ -53,7 +53,7 @@ func TestHandlers_CreateHandle(t *testing.T) {
 			storage := NewMockURLStorer(t)
 
 			if tt.method == http.MethodPost {
-				storage.On("SaveURL", mock.Anything, mock.Anything).Return(nil)
+				storage.On("SaveURL", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			}
 
 			h := New(storage, *cfg, zap.NewNop(), nil)
@@ -197,7 +197,7 @@ func TestHandlers_ShortenJSONHandle(t *testing.T) {
 			method: http.MethodPost,
 			body:   `{"url": "https://example.com"}`,
 			mockBehavior: func(s *MockURLStorer) {
-				s.On("SaveURL", mock.Anything, "https://example.com").Return(nil)
+				s.On("SaveURL", mock.Anything, "https://example.com", mock.Anything).Return(nil)
 			},
 			want: want{
 				statusCode: http.StatusCreated,
