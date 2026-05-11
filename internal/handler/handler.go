@@ -150,11 +150,18 @@ func (h *Handlers) ShortenJSONHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status := http.StatusCreated
 	shortURL, err := h.saveWithRetry(req.URL)
 	if err != nil {
-		h.log.Error("failed to save url", zap.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+		var conflict *storage.ConflictError
+		if errors.As(err, &conflict) {
+			shortURL = conflict.ShortCode
+			status = http.StatusConflict
+		} else {
+			h.log.Error("failed to save url", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
@@ -167,7 +174,7 @@ func (h *Handlers) ShortenJSONHandle(w http.ResponseWriter, r *http.Request) {
 	res := ShortenResponse{Result: resultURL}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		h.log.Error("failed to write response body", zap.Error(err))
 		return
@@ -182,11 +189,18 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status := http.StatusCreated
 	shortURL, err := h.saveWithRetry(string(body))
 	if err != nil {
-		h.log.Error("failed to save url", zap.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+		var conflict *storage.ConflictError
+		if errors.As(err, &conflict) {
+			shortURL = conflict.ShortCode
+			status = http.StatusConflict
+		} else {
+			h.log.Error("failed to save url", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	resultURL, err := url.JoinPath(h.config.ResultAddress, shortURL)
@@ -196,7 +210,7 @@ func (h *Handlers) CreateHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(status)
 	if _, err := w.Write([]byte(resultURL)); err != nil {
 		h.log.Error("failed to write response body", zap.Error(err))
 		return

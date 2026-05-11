@@ -71,14 +71,29 @@ func (d *DB) SaveURL(code string, value string) error {
 		"INSERT INTO urls (short_code, original_url) VALUES ($1, $2)",
 		code, value,
 	)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return fmt.Errorf("%w: %s", storage.ErrCollision, code)
-		}
+	if err == nil {
+		return nil
+	}
+
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
 		return err
 	}
-	return nil
+
+	if pgErr.ConstraintName == "urls_original_url_key" {
+		var existing string
+		//goland:noinspection SqlNoDataSourceInspection
+		qErr := d.conn.QueryRowContext(ctx,
+			"SELECT short_code FROM urls WHERE original_url = $1",
+			value,
+		).Scan(&existing)
+		if qErr != nil {
+			return fmt.Errorf("failed to fetch existing short code: %w", qErr)
+		}
+		return &storage.ConflictError{ShortCode: existing}
+	}
+
+	return fmt.Errorf("%w: %s", storage.ErrCollision, code)
 }
 
 func (d *DB) SaveBatch(items []storage.BatchItem) error {
@@ -97,21 +112,25 @@ func (d *DB) SaveBatch(items []storage.BatchItem) error {
 
 	//goland:noinspection SqlNoDataSourceInspection
 	stmt, err := tx.PrepareContext(ctx,
-		"INSERT INTO urls (short_code, original_url) VALUES ($1, $2)",
+		`INSERT INTO urls (short_code, original_url) VALUES ($1, $2)
+		 ON CONFLICT (original_url) DO UPDATE SET original_url = EXCLUDED.original_url
+		 RETURNING short_code`,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer func() { _ = stmt.Close() }()
 
-	for _, item := range items {
-		if _, err := stmt.ExecContext(ctx, item.ShortCode, item.OriginalURL); err != nil {
+	for i, item := range items {
+		var returnedCode string
+		if err := stmt.QueryRowContext(ctx, item.ShortCode, item.OriginalURL).Scan(&returnedCode); err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 				return fmt.Errorf("%w: %s", storage.ErrCollision, item.ShortCode)
 			}
 			return err
 		}
+		items[i].ShortCode = returnedCode
 	}
 
 	if err := tx.Commit(); err != nil {
