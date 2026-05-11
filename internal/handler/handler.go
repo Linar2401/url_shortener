@@ -55,13 +55,11 @@ func Serve(cfg *config.Config) error {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 
-	urlStore, err := storage.New(cfg.FileStoragePath)
-	if err != nil {
-		return fmt.Errorf("failed to initialize a URL store: %w", err)
-	}
-
+	var urlStore URLStorer
 	var pinger Pinger
-	if cfg.DatabaseDSN != "" {
+
+	switch {
+	case cfg.DatabaseDSN != "":
 		db, err := database.New(cfg.DatabaseDSN)
 		if err != nil {
 			return fmt.Errorf("failed to initialize database: %w", err)
@@ -71,7 +69,23 @@ func Serve(cfg *config.Config) error {
 				log.Error("failed to close database", zap.Error(err))
 			}
 		}()
+		if err := db.Migrate(); err != nil {
+			return fmt.Errorf("failed to run migrations: %w", err)
+		}
+		urlStore = db
 		pinger = db
+	case cfg.FileStoragePath != "":
+		fs, err := storage.New(cfg.FileStoragePath)
+		if err != nil {
+			return fmt.Errorf("failed to initialize file storage: %w", err)
+		}
+		urlStore = fs
+	default:
+		fs, err := storage.New("")
+		if err != nil {
+			return fmt.Errorf("failed to initialize in-memory storage: %w", err)
+		}
+		urlStore = fs
 	}
 
 	handlers := New(urlStore, *cfg, log, pinger)
